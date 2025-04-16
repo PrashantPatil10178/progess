@@ -22,7 +22,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    const stored = localStorage.getItem("app-theme") || account.getPrefs();
+    const stored = localStorage.getItem("app-theme");
     return (stored as Theme) || "light";
   });
 
