@@ -13,5 +13,9 @@ export default defineConfig({
   },
   server: {
     host: ["progress.webfuze.in"],
+    allowedHosts,
+  },
+  preview: {
+    allowedHosts: ["progress.webfuze.in"],
   },
 });
