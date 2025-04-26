@@ -16,6 +16,7 @@ const router = createRouter({
   scrollRestoration: true,
   defaultStructuralSharing: true,
   defaultPreloadStaleTime: 0,
+  basepath: "/studytracker",
 });
 
 // Register the router instance for type safety

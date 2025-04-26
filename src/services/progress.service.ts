@@ -52,10 +52,8 @@ export const getRecentProgress = async (userId: string, limit = 10) => {
   }
 };
 
-// Log daily progress
 export const logProgress = async (userId: string, progressData: any) => {
   try {
-    // Check if progress for today already exists
     const today = new Date();
     const formattedDate = today.toISOString().split("T")[0];
     console.log(" data:", progressData);
@@ -80,7 +78,6 @@ export const logProgress = async (userId: string, progressData: any) => {
       );
     }
 
-    // Otherwise, create a new progress entry
     return await databases.createDocument(
       DATABASE_ID,
       PROGRESS_COLLECTION_ID,

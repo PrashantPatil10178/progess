@@ -62,6 +62,7 @@ const MAHARASHTRA_DISTRICTS = [
 export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNo, setPhoneNo] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -77,6 +78,7 @@ export default function RegisterPage() {
     if (
       !name ||
       !email ||
+      !phoneNo ||
       !password ||
       !confirmPassword ||
       !studentClass ||
@@ -91,8 +93,14 @@ export default function RegisterPage() {
       return;
     }
 
+    // Validate phone number format (10 digits)
+    if (!/^\d{10}$/.test(phoneNo)) {
+      setError("Phone number must be 10 digits");
+      return;
+    }
+
     try {
-      await register(name, email, password, studentClass, district);
+      await register(name, email, password, studentClass, district, phoneNo);
       navigate({
         to: "/dashboard",
       });
@@ -138,6 +146,17 @@ export default function RegisterPage() {
                 placeholder="m@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phoneNo">Phone Number</Label>
+              <Input
+                id="phoneNo"
+                type="tel"
+                placeholder="9876543210"
+                value={phoneNo}
+                onChange={(e) => setPhoneNo(e.target.value)}
                 required
               />
             </div>

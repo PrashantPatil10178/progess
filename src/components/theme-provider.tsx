@@ -1,5 +1,4 @@
 // theme-provider.tsx
-import { account } from "@/lib/appwrite";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
@@ -34,8 +33,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [theme]);
 
   const toggleTheme = async () => {
-    await account.updatePrefs({ theme: theme === "light" ? "dark" : "light" });
-
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
 

@@ -51,7 +51,6 @@ interface RecentActivity {
 
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
-  const [confetti, setConfetti] = useState(false);
   const [todayProgress, setTodayProgress] = useState<ProgressEntry | null>(
     null
   );
@@ -59,6 +58,7 @@ export default function DashboardPage() {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>(
     []
   );
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
   const { user } = useAuth();
   const currentDate = new Date("2025-04-09T12:50:24Z");
 
@@ -211,55 +211,11 @@ export default function DashboardPage() {
         console.error("Error fetching progress data", error);
       } finally {
         setIsLoading(false);
-
-        // Show confetti after loading if user has points
-        if (user?.points && user.points > 0) {
-          setConfetti(true);
-          setTimeout(() => setConfetti(false), 5000);
-        }
       }
     };
 
     fetchData();
   }, [user, currentDate]);
-
-  // Create confetti elements
-  const renderConfetti = () => {
-    if (!confetti) return null;
-
-    const confettiElements = [];
-    const colors = [
-      "#ff0000",
-      "#00ff00",
-      "#0000ff",
-      "#ffff00",
-      "#ff00ff",
-      "#00ffff",
-    ];
-
-    for (let i = 0; i < 50; i++) {
-      const left = `${Math.random() * 100}%`;
-      const animationDuration = `${Math.random() * 3 + 2}s`;
-      const animationDelay = `${Math.random() * 2}s`;
-      const color = colors[Math.floor(Math.random() * colors.length)];
-
-      confettiElements.push(
-        <div
-          key={i}
-          className="confetti"
-          style={{
-            left,
-            backgroundColor: color,
-            animationDuration,
-            animationDelay,
-            top: "-10px",
-          }}
-        />
-      );
-    }
-
-    return confettiElements;
-  };
 
   const motivationalQuotes = [
     "Success is not final, failure is not fatal: It is the courage to continue that counts.",
@@ -270,9 +226,16 @@ export default function DashboardPage() {
     "Achievement happens when preparation meets opportunity.",
   ];
 
-  // Get a random quote
-  const randomQuote =
-    motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
+  // Rotate quotes every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentQuoteIndex((prevIndex) =>
+        prevIndex === motivationalQuotes.length - 1 ? 0 : prevIndex + 1
+      );
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Calculate level progress
   const calculateLevelProgress = () => {
@@ -319,7 +282,6 @@ export default function DashboardPage() {
 
   return (
     <div className="container py-8 relative">
-      {renderConfetti()}
       <div className="grid gap-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="animate-slide-in-left">
@@ -548,13 +510,13 @@ export default function DashboardPage() {
                       <div className="rounded-full bg-primary/10 p-2">
                         <Clock className="h-4 w-4 text-primary" />
                       </div>
-                      <div className="flex-1 space-y-1">
+                      <div className="flex-1 space">
                         <p className="text-sm font-medium leading-none">
                           {activity.activity}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        {/* <p className="text-xs text-muted-foreground">
                           {activity.date}
-                        </p>
+                        </p> */}
                       </div>
                       <div className="text-sm font-medium text-green-500">
                         +{activity.points} pts
@@ -589,7 +551,7 @@ export default function DashboardPage() {
                     <Flame className="h-6 w-6 text-white animate-bounce-slow" />
                   </div>
                   <p className="text-lg font-medium text-white">
-                    {randomQuote}
+                    {motivationalQuotes[currentQuoteIndex]}
                   </p>
                 </div>
               </CardContent>

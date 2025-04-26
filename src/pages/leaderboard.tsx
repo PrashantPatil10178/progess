@@ -77,7 +77,6 @@ export default function LeaderboardPage() {
         }));
         setMonthlyLeaderboard(formattedMonthlyData);
 
-        // Fetch weekly leaderboard
         const weeklyData = await getWeeklyLeaderboard(10);
         const formattedWeeklyData = weeklyData.map((doc: any) => ({
           $id: doc.$id || "",
@@ -91,16 +90,12 @@ export default function LeaderboardPage() {
         }));
         setWeeklyLeaderboard(formattedWeeklyData);
 
-        // Fetch user's rank
         if (user) {
           const rank = await getUserRank(user.$id);
           setUserRank(rank);
 
-          // Update user's rank in the database if it has changed
           if (user.rank !== rank) {
             try {
-              // Assuming you have an updateUserData function
-              // await updateUserData({ rank });
             } catch (err) {
               console.error("Failed to update user rank", err);
             }

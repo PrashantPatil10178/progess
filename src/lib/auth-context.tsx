@@ -9,16 +9,16 @@ import {
 } from "./appwrite";
 import { OAuthProvider } from "appwrite";
 
-interface User {
+export interface User {
   $id: string;
   name: string;
   email?: string;
-  Class: string; // Note the capital 'C' to match database
-  District: string; // Note the capital 'D' to match database
+  phoneNo?: string;
+  Class: string;
+  District: string;
   points: number;
   streak: number;
   badges: string[];
-  profilePicture: string;
   [key: string]: any;
 }
 
@@ -31,7 +31,8 @@ interface AuthContextType {
     email: string,
     password: string,
     Class: string,
-    District: string
+    District: string,
+    phoneNo: string
   ) => Promise<User>;
   login: (email: string, password: string) => Promise<User>;
   loginWithGoogle: () => Promise<void>;
@@ -77,12 +78,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return {
           name: document.name,
           email: document.email,
+          phoneNo: document.phoneNo || "",
           Class: document.Class || "",
           District: document.District || "",
           points: document.points || 0,
           streak: document.streak || 0,
           badges: document.badges || [],
-          profilePicture: document.profilePicture || "",
           ...document,
         } as User;
       }
@@ -98,7 +99,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     name: string,
     email?: string,
     Class?: string,
-    District?: string
+    District?: string,
+    phoneNo?: string
   ): Promise<User> => {
     let userData = await getUserData(userId);
     if (userData) return userData;
@@ -110,6 +112,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       {
         name,
         email,
+        phoneNo: phoneNo || "",
         Class: Class || "",
         District: District || "",
         points: 0,
@@ -121,12 +124,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return {
       name: document.name,
       email: document.email,
-      Class: document.Class,
-      District: document.District,
-      points: document.points,
-      streak: document.streak,
-      badges: document.badges,
-      profilePicture: document.profilePicture || "",
+      phoneNo: document.phoneNo || "",
+      Class: document.Class || "",
+      District: document.District || "",
+      points: document.points || 0,
+      streak: document.streak || 0,
+      badges: document.badges || [],
       ...document,
     } as User;
   };
@@ -160,7 +163,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     email: string,
     password: string,
     Class: string,
-    District: string
+    District: string,
+    phoneNo: string
   ): Promise<User> => {
     try {
       setLoading(true);
@@ -173,13 +177,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       );
 
       await account.createEmailPasswordSession(email, password);
-
+      const PhoneWithIndian = "+91" + phoneNo;
+      await account.updatePhone(PhoneWithIndian, password);
       const userData = await ensureUserDocumentExists(
         newAccount.$id,
         name,
         email,
         Class,
-        District
+        District,
+        phoneNo
       );
 
       setUser(userData);
@@ -223,7 +229,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const currentUrl = window.location.origin;
       account.createOAuth2Session(
         OAuthProvider.Google,
-        `${currentUrl}/dashboard`,
+        `${currentUrl}/studytracker/dashboard`,
         `${currentUrl}/login-failed`
       );
     } catch (error) {
@@ -267,7 +273,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateUserData = async (data: Partial<User>): Promise<User | null> => {
     try {
       if (!user) return null;
-
+      await account.updatePhone("+91" + data.phoneNo || "", user.email || "");
       const document = await databases.updateDocument(
         DATABASE_ID,
         USERS_COLLECTION_ID,

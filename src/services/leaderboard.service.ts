@@ -22,22 +22,18 @@ export const getLeaderboard = async (limit = 10) => {
   }
 };
 
-// Get user rank
 export const getUserRank = async (userId: string) => {
   try {
-    // First get all users sorted by points
     const allUsers = await databases.listDocuments(
       DATABASE_ID,
       USERS_COLLECTION_ID,
       [Query.orderDesc("points")]
     );
 
-    // Find the index of the current user
     const userIndex = allUsers.documents.findIndex(
       (user) => user.$id === userId
     );
 
-    // Return rank (1-based index)
     return userIndex !== -1 ? userIndex + 1 : null;
   } catch (error) {
     console.error("Error fetching user rank", error);
@@ -45,7 +41,6 @@ export const getUserRank = async (userId: string) => {
   }
 };
 
-// Get current week in YYYY-WW format
 const getCurrentWeek = () => {
   const now = new Date();
   const onejan = new Date(now.getFullYear(), 0, 1);
@@ -55,18 +50,15 @@ const getCurrentWeek = () => {
   return `${now.getFullYear()}-${weekNumber.toString().padStart(2, "0")}`;
 };
 
-// Get current month in YYYY-MM format
 const getCurrentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
 };
 
-// Get weekly leaderboard
 export const getWeeklyLeaderboard = async (limit = 10) => {
   try {
     const currentWeek = getCurrentWeek();
 
-    // Get weekly points for current week
     const weeklyPoints = await databases.listDocuments(
       DATABASE_ID,
       WEEKLY_POINTS_COLLECTION_ID,
@@ -77,12 +69,10 @@ export const getWeeklyLeaderboard = async (limit = 10) => {
       ]
     );
 
-    // If no weekly data yet, return empty array
     if (weeklyPoints.documents.length === 0) {
       return [];
     }
 
-    // Get user details for each user in the weekly leaderboard
     const userIds = weeklyPoints.documents.map((doc) => doc.userId);
     const users = await databases.listDocuments(
       DATABASE_ID,
@@ -90,12 +80,11 @@ export const getWeeklyLeaderboard = async (limit = 10) => {
       [Query.equal("$id", userIds)]
     );
 
-    // Combine weekly points with user data
     return weeklyPoints.documents.map((weeklyDoc) => {
       const user = users.documents.find((u) => u.$id === weeklyDoc.userId);
       return {
         ...user,
-        points: weeklyDoc.points, // Use weekly points instead of total points
+        points: weeklyDoc.points,
       };
     });
   } catch (error) {
@@ -104,12 +93,10 @@ export const getWeeklyLeaderboard = async (limit = 10) => {
   }
 };
 
-// Get monthly leaderboard
 export const getMonthlyLeaderboard = async (limit = 10) => {
   try {
     const currentMonth = getCurrentMonth();
 
-    // Get monthly points for current month
     const monthlyPoints = await databases.listDocuments(
       DATABASE_ID,
       MONTHLY_POINTS_COLLECTION_ID,
@@ -120,12 +107,10 @@ export const getMonthlyLeaderboard = async (limit = 10) => {
       ]
     );
 
-    // If no monthly data yet, return empty array
     if (monthlyPoints.documents.length === 0) {
       return [];
     }
 
-    // Get user details for each user in the monthly leaderboard
     const userIds = monthlyPoints.documents.map((doc) => doc.userId);
     const users = await databases.listDocuments(
       DATABASE_ID,
@@ -133,12 +118,11 @@ export const getMonthlyLeaderboard = async (limit = 10) => {
       [Query.equal("$id", userIds)]
     );
 
-    // Combine monthly points with user data
     return monthlyPoints.documents.map((monthlyDoc) => {
       const user = users.documents.find((u) => u.$id === monthlyDoc.userId);
       return {
         ...user,
-        points: monthlyDoc.points, // Use monthly points instead of total points
+        points: monthlyDoc.points,
       };
     });
   } catch (error) {
@@ -147,7 +131,6 @@ export const getMonthlyLeaderboard = async (limit = 10) => {
   }
 };
 
-// Update weekly and monthly points when a user logs progress
 export const updateLeaderboardPoints = async (
   userId: string,
   points: number
@@ -164,7 +147,6 @@ export const updateLeaderboardPoints = async (
     );
 
     if (weeklyQuery.documents.length > 0) {
-      // Update existing weekly record
       const weeklyDoc = weeklyQuery.documents[0];
       await databases.updateDocument(
         DATABASE_ID,
@@ -175,7 +157,6 @@ export const updateLeaderboardPoints = async (
         }
       );
     } else {
-      //
       await databases.createDocument(
         DATABASE_ID,
         WEEKLY_POINTS_COLLECTION_ID,
@@ -196,7 +177,6 @@ export const updateLeaderboardPoints = async (
     );
 
     if (monthlyQuery.documents.length > 0) {
-      // Update existing monthly record
       const monthlyDoc = monthlyQuery.documents[0];
       await databases.updateDocument(
         DATABASE_ID,
@@ -207,7 +187,6 @@ export const updateLeaderboardPoints = async (
         }
       );
     } else {
-      // Create new monthly record
       await databases.createDocument(
         DATABASE_ID,
         MONTHLY_POINTS_COLLECTION_ID,
@@ -219,6 +198,17 @@ export const updateLeaderboardPoints = async (
         }
       );
     }
+
+    // Update total points in user document
+    const userDoc = await databases.getDocument(
+      DATABASE_ID,
+      USERS_COLLECTION_ID,
+      userId
+    );
+
+    await databases.updateDocument(DATABASE_ID, USERS_COLLECTION_ID, userId, {
+      points: (userDoc.points || 0) + points,
+    });
   } catch (error) {
     console.error("Error updating leaderboard points", error);
     throw error;

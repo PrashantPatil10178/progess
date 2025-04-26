@@ -11,9 +11,7 @@ export default defineConfig({
       "@": resolve(__dirname, "./src"),
     },
   },
-  server: {
-    host: ["progress.webfuze.in"],
-  },
+  base: "/studytracker",
   preview: {
     allowedHosts: ["progress.webfuze.in"],
   },

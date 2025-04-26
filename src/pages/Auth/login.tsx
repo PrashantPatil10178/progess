@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import {
   Card,
@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const { login, loginWithGoogle, loading } = useAuth();
+  const navigate = useNavigate();
 
   interface FormSubmitEvent extends React.FormEvent<HTMLFormElement> {
     preventDefault(): void;
@@ -36,7 +37,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      // Navigation is handled in the auth context
+      navigate({ to: "/dashboard" });
     } catch (err) {
       setError("Invalid email or password");
     }
@@ -45,7 +46,7 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     try {
       await loginWithGoogle();
-      // User will be redirected to Google's login page
+      navigate({ to: "/dashboard" });
     } catch (err) {
       setError("Google login failed. Please try again.");
     }

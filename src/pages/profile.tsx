@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSearch } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -12,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -24,6 +25,9 @@ import {
   Flame,
   Medal,
   Target,
+  Phone,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
@@ -34,8 +38,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
-// List of Maharashtra districts
 const MAHARASHTRA_DISTRICTS = [
   "Ahmednagar",
   "Akola",
@@ -75,33 +79,90 @@ const MAHARASHTRA_DISTRICTS = [
   "Yavatmal",
 ];
 
+interface SearchParams {
+  from?: string;
+  requirePhone?: string;
+}
+
 export default function ProfilePage() {
+  const search: SearchParams = useSearch({
+    from: undefined,
+    strict: false,
+  });
+  console.log("Search params:", search);
+  const [requirePhone, setRequirePhone] = useState(
+    search.requirePhone === "true"
+  );
   const { user, updateUserData } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState("");
   const [Class, setClass] = useState("");
   const [District, setDistrict] = useState("");
+  const [phoneNo, setPhoneNo] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
       setName(user.name || "");
       setClass(user.Class || "");
       setDistrict(user.District || "");
+      setPhoneNo(user.phoneNo || "");
       setIsLoading(false);
+
+      // Auto-enable edit mode if phone is required
+      if (requirePhone && !user.phoneNo) {
+        setIsEditing(true);
+        setTimeout(() => {
+          phoneInputRef.current?.focus();
+        }, 100);
+      }
     }
-  }, [user]);
+  }, [user, requirePhone]);
+
+  const validatePhoneNumber = (number: string) => {
+    if (!/^\d*$/.test(number)) {
+      return "Phone number should contain only digits";
+    }
+    if (number.length > 0 && number.length !== 10) {
+      return "Phone number must be 10 digits";
+    }
+    return "";
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setPhoneNo(value);
+    setPhoneError(validatePhoneNumber(value));
+  };
 
   const handleSaveProfile = async () => {
+    const phoneValidationError = validatePhoneNumber(phoneNo);
+    if (phoneValidationError) {
+      setPhoneError(phoneValidationError);
+      return;
+    }
+
+    setIsSaving(true);
     try {
       await updateUserData({
         name,
         Class,
         District,
+        phoneNo,
       });
       setIsEditing(false);
+      setPhoneError("");
+      // Remove the phone requirement banner if phone was added
+      if (requirePhone && phoneNo) {
+        setRequirePhone(false);
+      }
     } catch (error) {
       console.error("Failed to update profile", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -150,6 +211,24 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Notification Banner for Required Phone */}
+        {requirePhone && !phoneNo && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 animate-bounce-in">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-5 w-5 text-yellow-400" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  <span className="font-bold">Action required!</span> Please
+                  complete your profile by adding your phone number to continue
+                  using the application.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-6 md:grid-cols-3">
           <Card className="md:col-span-1 animate-scale border-blue-200 dark:border-blue-800 overflow-hidden hover:shadow-lg transition-all duration-200">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -157,7 +236,6 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent className="flex flex-col items-center text-center p-6">
               <Avatar className="h-24 w-24 mb-4 border-4 border-primary animate-glow">
-                <AvatarImage src={user?.profilePicture} alt={user?.name} />
                 <AvatarFallback className="text-2xl">
                   {user?.name?.charAt(0) || "U"}
                 </AvatarFallback>
@@ -172,6 +250,25 @@ export default function ProfilePage() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      ref={phoneInputRef}
+                      value={phoneNo}
+                      onChange={handlePhoneChange}
+                      placeholder="Enter 10 digit phone number"
+                      type="tel"
+                      maxLength={10}
+                      className={cn(phoneError && "border-red-500")}
+                    />
+                    {phoneError && (
+                      <div className="flex items-center text-red-500 text-sm">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        {phoneError}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="class">Class</Label>
@@ -209,7 +306,13 @@ export default function ProfilePage() {
               ) : (
                 <>
                   <h2 className="text-xl font-bold">{name}</h2>
-                  <div className="flex flex-col items-center mt-2">
+                  <div className="flex flex-col items-center mt-2 space-y-1">
+                    {phoneNo && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Phone className="h-4 w-4" />
+                        {phoneNo}
+                      </div>
+                    )}
                     {Class && (
                       <p className="text-sm text-muted-foreground">
                         Class {Class}
@@ -251,15 +354,25 @@ export default function ProfilePage() {
                 </Button>
                 <Button
                   onClick={handleSaveProfile}
-                  className="bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600"
+                  disabled={!!phoneError || isSaving}
+                  className={cn(
+                    "bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600",
+                    (phoneError || isSaving) && "opacity-50 cursor-not-allowed"
+                  )}
                 >
-                  Save Changes
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
                 </Button>
               </CardFooter>
             )}
           </Card>
 
-          {/* Rest of the component remains the same */}
           <Card className="md:col-span-2 animate-slide-in-right border-blue-200 dark:border-blue-800 overflow-hidden hover:shadow-lg transition-all duration-200">
             <Tabs defaultValue="statistics">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
