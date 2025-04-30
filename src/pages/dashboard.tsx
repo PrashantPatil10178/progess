@@ -59,14 +59,12 @@ export default function DashboardPage() {
     []
   );
   const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
-  const { user } = useAuth();
-  const currentDate = new Date("2025-04-09T12:50:24Z");
+  const { user, getRank } = useAuth();
+  const [rank, setRank] = useState<number | null>(null);
 
-  // Badges are calculated based on user's progress
   const calculateBadges = () => {
     const badges = [];
 
-    // Add badges based on criteria
     if (user?.streak && user.streak >= 7) {
       badges.push("7-Day Streak");
     }
@@ -94,14 +92,12 @@ export default function DashboardPage() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const today = new Date(currentDate);
+    const today = new Date();
 
-    // Reset time part for comparison
     today.setHours(0, 0, 0, 0);
     const compareDate = new Date(date);
     compareDate.setHours(0, 0, 0, 0);
 
-    // Calculate difference in days
     const diffTime = today.getTime() - compareDate.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
@@ -123,8 +119,8 @@ export default function DashboardPage() {
       }
 
       try {
-        // Fetch progress history
         const recentEntries = await getRecentProgress(user.$id, 10);
+        setRank(await getRank());
 
         if (recentEntries && recentEntries.length > 0) {
           setProgressHistory(
@@ -144,25 +140,29 @@ export default function DashboardPage() {
           );
 
           // Set today's progress if exists
-          const today = recentEntries.find((entry) => {
+          const todayEntry = recentEntries.find((entry) => {
             const entryDate = new Date(entry.date);
-            const today = new Date(currentDate);
-            return entryDate.toDateString() === today.toDateString();
+            const today = new Date();
+            return (
+              entryDate.getDate() === today.getDate() &&
+              entryDate.getMonth() === today.getMonth() &&
+              entryDate.getFullYear() === today.getFullYear()
+            );
           });
 
-          if (today) {
+          if (todayEntry) {
             setTodayProgress({
-              $id: today.$id,
-              userId: today.userId,
-              date: today.date,
-              attendance: today.attendance,
-              subjects: today.subjects,
-              pomodoroCount: today.pomodoroCount,
-              focusMinutes: today.focusMinutes,
-              breakMinutes: today.breakMinutes,
-              points: today.points,
-              completedTodos: today.completedTodos,
-              createdAt: today.createdAt,
+              $id: todayEntry.$id,
+              userId: todayEntry.userId,
+              date: todayEntry.date,
+              attendance: todayEntry.attendance,
+              subjects: todayEntry.subjects,
+              pomodoroCount: todayEntry.pomodoroCount,
+              focusMinutes: todayEntry.focusMinutes,
+              breakMinutes: todayEntry.breakMinutes,
+              points: todayEntry.points,
+              completedTodos: todayEntry.completedTodos,
+              createdAt: todayEntry.createdAt,
             });
           }
 
@@ -215,7 +215,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [user, currentDate]);
+  }, [user]);
 
   const motivationalQuotes = [
     "Success is not final, failure is not fatal: It is the courage to continue that counts.",
@@ -226,18 +226,16 @@ export default function DashboardPage() {
     "Achievement happens when preparation meets opportunity.",
   ];
 
-  // Rotate quotes every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentQuoteIndex((prevIndex) =>
         prevIndex === motivationalQuotes.length - 1 ? 0 : prevIndex + 1
       );
-    }, 10000); // 10 seconds
+    }, 10000);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate level progress
   const calculateLevelProgress = () => {
     if (!user?.points) return 0;
 
@@ -272,12 +270,13 @@ export default function DashboardPage() {
     );
   }
 
-  // Create an empty state for today's progress if none exists
   const displayProgress = todayProgress || {
     attendance: false,
     subjects: [],
     completedTodos: 0,
     pomodoroCount: 0,
+    points: 0,
+    focusMinutes: 0,
   };
 
   return (
@@ -286,7 +285,7 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="animate-slide-in-left">
             <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-green-500">
-              Welcome back, {user?.name || "Nikhil178-tech"}!
+              Welcome back, {user?.name || "Student"}!
             </h1>
             <p className="text-muted-foreground">
               Track your progress and stay on top of your studies.
@@ -310,8 +309,8 @@ export default function DashboardPage() {
             <CardContent className="pt-4">
               <div className="text-2xl font-bold">{user?.points ?? 0}</div>
               <p className="text-xs text-muted-foreground">
-                {progressHistory.length > 0
-                  ? `+${progressHistory[0].points} points today`
+                {todayProgress
+                  ? `+${todayProgress.points} points today`
                   : "No points earned today yet"}
               </p>
               <div className="mt-4 h-1 w-full bg-primary/10 rounded-full overflow-hidden">
@@ -369,7 +368,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <div className="text-2xl font-bold">
-                  {user?.rank ? `#${user.rank}` : "N/A"}
+                  {rank ? `#${rank}` : "N/A"}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {user?.points && user.points > 200
@@ -414,7 +413,11 @@ export default function DashboardPage() {
             <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
               <CardTitle>Today's Progress</CardTitle>
               <CardDescription>
-                Your academic activities for today
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6 p-6">
@@ -425,20 +428,30 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   {displayProgress.attendance ? (
-                    <CheckCircle className="h-5 w-5 text-green-500 animate-bounce-slow" />
+                    <div className="flex items-center gap-1">
+                      <CheckCircle className="h-5 w-5 text-green-500 animate-bounce-slow" />
+                      <span className="text-sm text-green-500">Present</span>
+                    </div>
                   ) : (
-                    <Clock className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        Not marked
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
+
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <BookOpen className="h-5 w-5 text-muted-foreground" />
-                  <div>Subjects Studied</div>
+                  <div>
+                    Subjects Studied ({displayProgress.subjects?.length || 0})
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {displayProgress.subjects &&
-                  displayProgress.subjects.length > 0 ? (
+                  {displayProgress.subjects?.length > 0 ? (
                     displayProgress.subjects.map((subject, index) => (
                       <Badge
                         key={index}
@@ -456,15 +469,25 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-5 w-5 text-muted-foreground" />
                   <div>Tasks Completed</div>
                 </div>
                 <div className="font-medium">
-                  {displayProgress.completedTodos} tasks
+                  {displayProgress.completedTodos > 0 ? (
+                    <span className="text-green-500">
+                      {displayProgress.completedTodos} tasks
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {displayProgress.completedTodos} tasks
+                    </span>
+                  )}
                 </div>
               </div>
+
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -472,7 +495,21 @@ export default function DashboardPage() {
                     <div>Pomodoro Sessions</div>
                   </div>
                   <div className="font-medium">
-                    {displayProgress.pomodoroCount} sessions
+                    {displayProgress.pomodoroCount > 0 ? (
+                      <span className="text-green-500">
+                        {displayProgress.pomodoroCount} sessions
+                        {displayProgress.focusMinutes && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({Math.floor(displayProgress.focusMinutes / 60)}h{" "}
+                            {displayProgress.focusMinutes % 60}m)
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {displayProgress.pomodoroCount} sessions
+                      </span>
+                    )}
                   </div>
                 </div>
                 <Progress
@@ -481,9 +518,19 @@ export default function DashboardPage() {
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   {displayProgress.pomodoroCount > 0
-                    ? `Great job! You've earned ${displayProgress.pomodoroCount * 20} points from your focus sessions.`
+                    ? `Great job! You've focused for ${displayProgress.focusMinutes || displayProgress.pomodoroCount * 25} minutes today.`
                     : "Complete Pomodoro sessions to improve focus and earn points."}
                 </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Award className="h-5 w-5 text-muted-foreground" />
+                  <div>Points Earned Today</div>
+                </div>
+                <div className="font-medium text-green-500">
+                  +{displayProgress.points} pts
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -514,9 +561,6 @@ export default function DashboardPage() {
                         <p className="text-sm font-medium leading-none">
                           {activity.activity}
                         </p>
-                        {/* <p className="text-xs text-muted-foreground">
-                          {activity.date}
-                        </p> */}
                       </div>
                       <div className="text-sm font-medium text-green-500">
                         +{activity.points} pts

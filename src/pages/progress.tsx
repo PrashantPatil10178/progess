@@ -36,6 +36,7 @@ import {
   ChevronUp,
   Clock,
   ChevronDown,
+  Info,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -49,14 +50,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { CardFooter } from "@/components/ui/card"; // Re-added CardFooter as it's used in the Todo Card
 import { updateLeaderboardPoints } from "@/services/leaderboard.service";
 
 interface Todo {
   $id: string;
   text: string;
   completed: boolean;
-  createdAt: string; // Assuming this comes from the service
+  createdAt: string;
+  pointsAwarded?: boolean;
+  isProcessing?: boolean;
+}
+
+interface ProgressActivity {
+  id: string;
+  type: "attendance" | "subject" | "todo" | "pomodoro";
+  details: string;
+  points: number;
+  timestamp: string;
 }
 
 const motivationalQuotes = [
@@ -79,27 +89,26 @@ export default function ProgressPage() {
   const [earnedPoints, setEarnedPoints] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasExistingProgress, setHasExistingProgress] = useState(false);
-  // Using Date() will give the *current* date/time, not a fixed one unless needed for testing.
-  // For testing, keep it as is. For production, use new Date().
-  const [currentDateTime, setCurrentDateTime] = useState(new Date()); // Changed to current date
-  // Removed the console.log(setCurrentDateTime) as it logs the function itself
-  console.log(setCurrentDateTime);
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  console.log(earnedPoints, setCurrentDateTime);
   const [attendance, setAttendance] = useState(false);
   const [attendanceLocked, setAttendanceLocked] = useState(false);
+  const [attendancePointsAwarded, setAttendancePointsAwarded] = useState(false);
   const [subjects, setSubjects] = useState<string[]>([]);
-  const [subjectsLocked, setSubjectsLocked] = useState<{
+  const [subjectsPointsAwarded, setSubjectsPointsAwarded] = useState<{
     [key: string]: boolean;
   }>({});
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState("");
   const [currentTodoForPomodoro, setCurrentTodoForPomodoro] =
     useState<string>("none");
-
-  // Timer settings
+  const [progressActivities, setProgressActivities] = useState<
+    ProgressActivity[]
+  >([]);
+  const [lastPomodoroPointsAwarded, setLastPomodoroPointsAwarded] = useState(0);
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [breakMinutes, setBreakMinutes] = useState(5);
   const [isEditingTime, setIsEditingTime] = useState(false);
-
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
   const [timeLeft, setTimeLeft] = useState(25 * 60);
@@ -108,6 +117,7 @@ export default function ProgressPage() {
   const [showFullScreen, setShowFullScreen] = useState(false);
   const [currentQuote, setCurrentQuote] = useState("");
   const [timerProgress, setTimerProgress] = useState(100);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const timerRef = useRef<any | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -117,59 +127,64 @@ export default function ProgressPage() {
     "English",
     "Hindi",
     "Marathi",
+    "Sanskrit",
     "Science",
+    "Maths",
     "Social Science",
-    "Information Technology",
+    "Other",
   ];
 
-  // Initialization Effect
   useEffect(() => {
     const initializeData = async () => {
       if (!user) {
-        setIsLoading(false); // Stop loading if no user
-        // Optional: Redirect to login or show a message
-        // router({ to: '/login' });
+        setIsLoading(false);
         return;
       }
 
-      setIsLoading(true); // Ensure loading state is true initially
+      setIsLoading(true);
       try {
         const todayProgress = await getTodayProgress(user.$id);
         if (todayProgress) {
           setHasExistingProgress(true);
-          setAttendance(todayProgress.attendance ?? false); // Use nullish coalescing
+          setAttendance(todayProgress.attendance ?? false);
           setAttendanceLocked(todayProgress.attendance ?? false);
+          setAttendancePointsAwarded(todayProgress.attendance ?? false);
 
           const savedSubjects = todayProgress.subjects ?? [];
           setSubjects(savedSubjects);
 
-          const lockedSubjectsObj: { [key: string]: boolean } = {};
+          const subjectsPointsAwardedObj: { [key: string]: boolean } = {};
           savedSubjects.forEach((subject: string) => {
-            lockedSubjectsObj[subject] = true;
+            subjectsPointsAwardedObj[subject] = true;
           });
-          setSubjectsLocked(lockedSubjectsObj);
+          setSubjectsPointsAwarded(subjectsPointsAwardedObj);
 
           setPomodoroCount(todayProgress.pomodoroCount ?? 0);
-          // Load timer settings if saved? (Optional)
-          // setFocusMinutes(todayProgress.focusMinutes ?? 25);
-          // setBreakMinutes(todayProgress.breakMinutes ?? 5);
+          setLastPomodoroPointsAwarded(todayProgress.pomodoroCount ?? 0);
+
+          if (todayProgress.activities) {
+            setProgressActivities(todayProgress.activities);
+          }
         } else {
-          // Reset state if no progress found for today
           setHasExistingProgress(false);
           setAttendance(false);
           setAttendanceLocked(false);
+          setAttendancePointsAwarded(false);
           setSubjects([]);
-          setSubjectsLocked({});
+          setSubjectsPointsAwarded({});
           setPomodoroCount(0);
+          setLastPomodoroPointsAwarded(0);
+          setProgressActivities([]);
         }
 
         const userTodosData = await getUserTodos(user.$id);
         setTodos(
           userTodosData.map((doc) => ({
             $id: doc.$id,
-            text: doc.text ?? "", // Use nullish coalescing
+            text: doc.text ?? "",
             completed: doc.completed ?? false,
-            createdAt: doc.createdAt ?? new Date().toISOString(), // Provide a default createdAt
+            createdAt: doc.createdAt ?? new Date().toISOString(),
+            pointsAwarded: doc.pointsAwarded ?? false,
           }))
         );
       } catch (error) {
@@ -183,16 +198,18 @@ export default function ProgressPage() {
         setHasExistingProgress(false);
         setAttendance(false);
         setAttendanceLocked(false);
+        setAttendancePointsAwarded(false);
         setSubjects([]);
-        setSubjectsLocked({});
+        setSubjectsPointsAwarded({});
         setPomodoroCount(0);
+        setLastPomodoroPointsAwarded(0);
+        setProgressActivities([]);
         setTodos([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    // Initialize Audio only once
     if (!audioRef.current) {
       audioRef.current = new Audio("/notification.mp3");
     }
@@ -200,18 +217,13 @@ export default function ProgressPage() {
       breakAudioRef.current = new Audio("/break-notification.mp3");
     }
 
-    // Set initial motivational quote
     setCurrentQuote(
       motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]
     );
 
     initializeData();
+  }, [user]);
 
-    // Cleanup function for this effect is not needed as it only runs on user change
-    // Timer cleanup is handled in the timer effect
-  }, [user]); // Depend only on user for initialization
-
-  // Timer Effect
   useEffect(() => {
     if (isTimerActive && !isTimerPaused) {
       const totalTime = isBreak ? breakMinutes * 60 : focusMinutes * 60;
@@ -219,7 +231,6 @@ export default function ProgressPage() {
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            // Play notification sounds safely
             if (!isBreak && audioRef.current) {
               audioRef.current
                 .play()
@@ -250,9 +261,9 @@ export default function ProgressPage() {
                   Math.floor(Math.random() * motivationalQuotes.length)
                 ]
               );
-              setTimeLeft(breakMinutes * 60); // Reset timer for break
-              setTimerProgress(100); // Reset progress for break
-              return breakMinutes * 60; // Return the new value directly
+              setTimeLeft(breakMinutes * 60);
+              setTimerProgress(100);
+              return breakMinutes * 60;
             } else {
               setIsBreak(false);
               setCurrentQuote(
@@ -260,14 +271,12 @@ export default function ProgressPage() {
                   Math.floor(Math.random() * motivationalQuotes.length)
                 ]
               );
-              setTimeLeft(focusMinutes * 60); // Reset timer for focus
-              setTimerProgress(100); // Reset progress for focus
-              return focusMinutes * 60; // Return the new value directly
+              setTimeLeft(focusMinutes * 60);
+              setTimerProgress(100);
+              return focusMinutes * 60;
             }
           }
 
-          // Update progress percentage
-          // Ensure totalTime is not zero to avoid division by zero
           const progressPercentage =
             totalTime > 0 ? ((prev - 1) / totalTime) * 100 : 0;
           setTimerProgress(progressPercentage);
@@ -276,23 +285,20 @@ export default function ProgressPage() {
         });
       }, 1000);
     } else {
-      // Clear interval if timer is not active or paused
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     }
 
-    // Cleanup function: Clear interval when dependencies change or component unmounts
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
     };
-  }, [isTimerActive, isTimerPaused, isBreak, focusMinutes, breakMinutes]); // Dependencies for the timer logic
+  }, [isTimerActive, isTimerPaused, isBreak, focusMinutes, breakMinutes]);
 
   const handleAttendanceToggle = (checked: boolean | "indeterminate") => {
-    // Handle Checkbox indeterminate state if necessary, otherwise cast to boolean
     const isChecked = typeof checked === "boolean" ? checked : false;
 
     if (attendanceLocked && !isChecked) {
@@ -316,45 +322,43 @@ export default function ProgressPage() {
   };
 
   const handleSubjectToggle = (subject: string) => {
-    if (subjectsLocked[subject]) {
-      // Simplified check: if it's locked, don't allow changes
-      toast({
-        title: "Cannot change subject status",
-        description: `"${subject}" has already been logged for today.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    if (subjects.includes(subject)) {
+      const updatedSubjects = subjects.filter((s) => s !== subject);
+      setSubjects(updatedSubjects);
 
-    // This toggle logic assumes you only mark subjects, not unmark them after initial load
-    if (!subjects.includes(subject)) {
+      toast({
+        title: "Subject removed",
+        description: `"${subject}" has been removed from your studied subjects for today.`,
+        variant: "default",
+      });
+    } else {
       const updatedSubjects = [...subjects, subject];
       setSubjects(updatedSubjects);
-      setSubjectsLocked((prev) => ({ ...prev, [subject]: true }));
+
       toast({
         title: "Subject added",
         description: `"${subject}" has been added to your studied subjects for today.`,
         variant: "default",
       });
     }
-    // No 'else' branch needed if unmarking is disallowed after being marked once
   };
 
   const handleAddTodo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTodo.trim() || !user) return;
 
-    const tempId = `temp-${Date.now()}`; // Optimistic UI ID
+    const tempId = `temp-${Date.now()}`;
     const optimisticTodo: Todo = {
       $id: tempId,
       text: newTodo.trim(),
       completed: false,
       createdAt: new Date().toISOString(),
+      pointsAwarded: false,
     };
 
-    setTodos((prevTodos) => [...prevTodos, optimisticTodo]); // Add optimistically
+    setTodos((prevTodos) => [...prevTodos, optimisticTodo]);
     const originalTodoText = newTodo;
-    setNewTodo(""); // Clear input immediately
+    setNewTodo("");
 
     try {
       const createdTodo = await createTodo(user.$id, originalTodoText.trim());
@@ -362,11 +366,11 @@ export default function ProgressPage() {
         prevTodos.map((todo) =>
           todo.$id === tempId
             ? {
-                // Update the optimistic todo with real data
                 $id: createdTodo.$id,
                 text: createdTodo.text ?? "",
                 completed: createdTodo.completed ?? false,
                 createdAt: createdTodo.createdAt ?? new Date().toISOString(),
+                pointsAwarded: false,
               }
             : todo
         )
@@ -378,9 +382,8 @@ export default function ProgressPage() {
         description: "Could not save the new todo. Please try again.",
         variant: "destructive",
       });
-      // Rollback optimistic update
       setTodos((prevTodos) => prevTodos.filter((todo) => todo.$id !== tempId));
-      setNewTodo(originalTodoText); // Restore input if needed
+      setNewTodo(originalTodoText);
     }
   };
 
@@ -388,19 +391,46 @@ export default function ProgressPage() {
     const todoToUpdate = todos.find((todo) => todo.$id === id);
     if (!todoToUpdate) return;
 
-    const originalTodos = [...todos]; // Store original state for rollback
+    if (todoToUpdate.isProcessing) return;
+
+    const originalTodos = [...todos];
     const newCompletedStatus = !todoToUpdate.completed;
 
-    // Optimistic UI update
+    const updatedPointsAwarded = newCompletedStatus
+      ? false
+      : todoToUpdate.pointsAwarded;
+
     setTodos(
       todos.map((todo) =>
-        todo.$id === id ? { ...todo, completed: newCompletedStatus } : todo
+        todo.$id === id
+          ? {
+              ...todo,
+              completed: newCompletedStatus,
+              pointsAwarded: updatedPointsAwarded,
+              isProcessing: true,
+            }
+          : todo
       )
     );
 
     try {
-      await updateTodo(id, { completed: newCompletedStatus });
-      // No need to update state again if API call is successful
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await updateTodo(id, {
+        completed: newCompletedStatus,
+        pointsAwarded: updatedPointsAwarded,
+      });
+
+      setTodos((currentTodos) =>
+        currentTodos.map((todo) =>
+          todo.$id === id
+            ? {
+                ...todo,
+                isProcessing: false,
+              }
+            : todo
+        )
+      );
     } catch (error) {
       console.error("Error updating todo:", error);
       toast({
@@ -408,16 +438,14 @@ export default function ProgressPage() {
         description: "Could not update the todo status. Please try again.",
         variant: "destructive",
       });
-      // Rollback optimistic update
       setTodos(originalTodos);
     }
   };
 
   const handleDeleteTodo = async (id: string) => {
-    const originalTodos = [...todos]; // Store original state for rollback
+    const originalTodos = [...todos];
     const todoToDelete = todos.find((t) => t.$id === id);
 
-    // Optimistic UI update
     setTodos(todos.filter((todo) => todo.$id !== id));
 
     try {
@@ -427,7 +455,6 @@ export default function ProgressPage() {
         description: `"${todoToDelete?.text}" was successfully deleted.`,
         variant: "default",
       });
-      // No need to update state again if API call is successful
     } catch (error) {
       console.error("Error deleting todo:", error);
       toast({
@@ -435,29 +462,57 @@ export default function ProgressPage() {
         description: "Could not delete the todo. Please try again.",
         variant: "destructive",
       });
-      // Rollback optimistic update
       setTodos(originalTodos);
     }
   };
 
   const calculatePoints = () => {
-    const pomodoroPoints = calculatePomodoroPoints(); // Calculate pomodoro points
     let points = 0;
-    if (attendance) points += 5;
-    // Calculate points based on total subjects marked today
-    points += subjects.length * 10;
-    points += todos.filter((todo) => todo.completed).length * 15;
-    points += pomodoroPoints;
-    console.log("Calculated points:", points); // Add logging to debug
+
+    if (attendance && !attendancePointsAwarded) {
+      points += 5;
+    }
+
+    subjects.forEach((subject) => {
+      if (!subjectsPointsAwarded[subject]) {
+        points += 10;
+      }
+    });
+
+    todos.forEach((todo) => {
+      if (todo.completed && !todo.pointsAwarded) {
+        points += 15;
+      }
+    });
+
+    const newPomodoroSessions = pomodoroCount - lastPomodoroPointsAwarded;
+    if (newPomodoroSessions > 0) {
+      const basePointsPerPomodoro = 20;
+      const pointAdjustmentFactor = focusMinutes > 0 ? focusMinutes / 25 : 1;
+      points += Math.round(
+        newPomodoroSessions * basePointsPerPomodoro * pointAdjustmentFactor
+      );
+    }
+
     return points;
   };
 
   const calculatePomodoroPoints = () => {
     const basePointsPerPomodoro = 20;
-    // Ensure focusMinutes is not zero to avoid division by zero
     const pointAdjustmentFactor = focusMinutes > 0 ? focusMinutes / 25 : 1;
     return Math.round(
       pomodoroCount * basePointsPerPomodoro * pointAdjustmentFactor
+    );
+  };
+
+  const calculateNewPomodoroPoints = () => {
+    const newPomodoroSessions = pomodoroCount - lastPomodoroPointsAwarded;
+    if (newPomodoroSessions <= 0) return 0;
+
+    const basePointsPerPomodoro = 20;
+    const pointAdjustmentFactor = focusMinutes > 0 ? focusMinutes / 25 : 1;
+    return Math.round(
+      newPomodoroSessions * basePointsPerPomodoro * pointAdjustmentFactor
     );
   };
 
@@ -468,7 +523,7 @@ export default function ProgressPage() {
   };
 
   const startTimer = () => {
-    setIsBreak(false); // Ensure we start with a focus session
+    setIsBreak(false);
     setTimeLeft(focusMinutes * 60);
     setTimerProgress(100);
     setIsTimerActive(true);
@@ -488,12 +543,12 @@ export default function ProgressPage() {
   };
 
   const resetTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current); // Clear interval on reset
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     setIsTimerActive(false);
     setIsTimerPaused(false);
-    setIsBreak(false); // Reset to focus mode
-    setTimeLeft(focusMinutes * 60); // Reset time to focus duration
+    setIsBreak(false);
+    setTimeLeft(focusMinutes * 60);
     setShowFullScreen(false);
     setTimerProgress(100);
   };
@@ -501,7 +556,6 @@ export default function ProgressPage() {
   const handleFocusMinutesChange = (value: number) => {
     setFocusMinutes(value);
     if (!isTimerActive && !isBreak) {
-      // Update timeLeft only if timer is not running and it's focus time
       setTimeLeft(value * 60);
       setTimerProgress(100);
     }
@@ -510,7 +564,6 @@ export default function ProgressPage() {
   const handleBreakMinutesChange = (value: number) => {
     setBreakMinutes(value);
     if (!isTimerActive && isBreak) {
-      // Update timeLeft only if timer is not running and it's break time
       setTimeLeft(value * 60);
       setTimerProgress(100);
     }
@@ -525,16 +578,11 @@ export default function ProgressPage() {
     });
   };
 
-  // In progress.tsx, update the handleSubmit function:
-
   const handleSubmit = async () => {
     if (!user) return;
 
     const points = calculatePoints();
-    console.log("Points to be submitted:", points); // Debug log
-
-    // Ensure points is a valid number
-    if (isNaN(points) || points < 0) {
+    if (isNaN(points)) {
       console.error("Invalid points value:", points);
       toast({
         title: "Points Calculation Error",
@@ -545,47 +593,131 @@ export default function ProgressPage() {
       return;
     }
 
+    if (points === 0) {
+      toast({
+        title: "No New Progress",
+        description:
+          "You haven't made any new progress since your last submission.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
     setEarnedPoints(points);
 
-    // Close the modal first if it's open
     const dialog = document.getElementById(
       "summary-modal"
     ) as HTMLDialogElement | null;
     if (dialog && dialog.open) {
       dialog.close();
     }
-    setSubmitted(true); // Show submission success screen
+    setSubmitted(true);
 
     try {
+      const newActivities: ProgressActivity[] = [];
+
+      if (attendance && !attendancePointsAwarded) {
+        newActivities.push({
+          id: `attendance-${Date.now()}`,
+          type: "attendance",
+          details: "Marked attendance",
+          points: 5,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      subjects.forEach((subject) => {
+        if (!subjectsPointsAwarded[subject]) {
+          newActivities.push({
+            id: `subject-${subject}-${Date.now()}`,
+            type: "subject",
+            details: subject,
+            points: 10,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      });
+
+      todos.forEach((todo) => {
+        if (todo.completed && !todo.pointsAwarded) {
+          newActivities.push({
+            id: `todo-${todo.$id}-${Date.now()}`,
+            type: "todo",
+            details: todo.text,
+            points: 15,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      });
+
+      const newPomodoroSessions = pomodoroCount - lastPomodoroPointsAwarded;
+      if (newPomodoroSessions > 0) {
+        const pomodoroPoints = calculateNewPomodoroPoints();
+        newActivities.push({
+          id: `pomodoro-${Date.now()}`,
+          type: "pomodoro",
+          details: `${newPomodoroSessions} pomodoro sessions`,
+          points: pomodoroPoints,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const allActivities = [...progressActivities, ...newActivities];
+      setProgressActivities(allActivities);
+
+      if (attendance) {
+        setAttendancePointsAwarded(true);
+      }
+
+      const updatedSubjectsPointsAwarded = { ...subjectsPointsAwarded };
+      subjects.forEach((subject) => {
+        updatedSubjectsPointsAwarded[subject] = true;
+      });
+      setSubjectsPointsAwarded(updatedSubjectsPointsAwarded);
+
+      const updatedTodos = todos.map((todo) => {
+        if (todo.completed && !todo.pointsAwarded) {
+          return { ...todo, pointsAwarded: true };
+        }
+        return todo;
+      });
+      setTodos(updatedTodos);
+
+      setLastPomodoroPointsAwarded(pomodoroCount);
+
       const currentProgress = {
         attendance,
         subjects,
         pomodoroCount,
         focusMinutes,
         breakMinutes,
-        points,
+        points: points,
         completedTodos: todos.filter((t) => t.completed).length,
+        activities: JSON.stringify(allActivities),
+        lastSubmission: new Date().toISOString(),
       };
-
-      // First log the progress
       await logProgress(user.$id, currentProgress);
 
-      // Make sure user.points and user.streak are numbers before adding
       const currentPoints = typeof user.points === "number" ? user.points : 0;
       const currentStreak = typeof user.streak === "number" ? user.streak : 0;
 
-      // Update leaderboard points (weekly and monthly)
       await updateLeaderboardPoints(user.$id, points);
 
-      // Update user data in context (streak logic might need refinement based on date)
       await updateUserData({
         points: currentPoints + points,
         streak: hasExistingProgress ? currentStreak : currentStreak + 1,
       });
 
-      setTimeout(() => {
-        router({ to: "/leaderboard" });
-      }, 3000);
+      setHasExistingProgress(true);
+
+      for (const todo of updatedTodos) {
+        if (todo.completed && todo.pointsAwarded) {
+          await updateTodo(todo.$id, { pointsAwarded: true });
+        }
+      }
+
+      router({ to: "/leaderboard" });
     } catch (error) {
       console.error("Error submitting progress:", error);
       toast({
@@ -593,8 +725,10 @@ export default function ProgressPage() {
         description: "Failed to save your progress. Please try again.",
         variant: "destructive",
       });
-      setSubmitted(false); // Reset submitted state on error
+      setSubmitted(false);
       setEarnedPoints(0);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -612,7 +746,6 @@ export default function ProgressPage() {
     );
   }
 
-  // Handle case where user is not logged in after loading
   if (!user && !isLoading) {
     return (
       <div className="container py-8 max-w-4xl text-center">
@@ -632,86 +765,36 @@ export default function ProgressPage() {
 
   if (submitted) {
     return (
-      <div className="container py-8 max-w-4xl">
-        <Card className="border-green-500 animate-scale overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
-            <CardTitle className="text-center text-2xl">
-              Progress Logged Successfully!
-            </CardTitle>
-            <CardDescription className="text-center">
-              Great job tracking your academic progress today
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 p-6">
-            <div className="flex justify-center">
-              <div className="rounded-full bg-green-100 p-6 dark:bg-green-900">
-                <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-400 animate-bounce-slow" />
-              </div>
-            </div>
-            <div className="text-center space-y-2">
-              <h3 className="text-xl font-bold">
-                You earned {earnedPoints} points!
-              </h3>
-              <p className="text-muted-foreground">
-                Keep up the good work to climb the leaderboard
-              </p>
-            </div>
-            <div className="flex justify-center pt-4">
-              <Badge
-                variant="outline"
-                className="text-lg px-4 py-2 bg-gradient-to-r from-green-100 to-green-200 dark:from-green-900 dark:to-green-800 text-green-800 dark:text-green-200 animate-pulse"
-              >
-                {/* Ensure user points are accessed safely */}
-                New Total: {user?.points ?? 0} points{" "}
-                {/* Display updated points from context */}
-              </Badge>
-            </div>
-            <div className="pt-4">
-              {/* Using an indeterminate progress bar for visual effect */}
-              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-green-400 to-green-600 h-full animate-pulse"
-                  style={{ width: "100%" }}
-                ></div>
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-center p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
-            <p className="text-sm text-muted-foreground">
-              Redirecting to leaderboard...
-            </p>
-          </CardFooter>
-        </Card>
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <h2 className="text-2xl font-bold animate-pulse">
+            Redirecting to leaderboard...
+          </h2>
+        </div>
       </div>
     );
   }
 
-  // Main Component Render
   return (
     <div className="container py-8 max-w-4xl relative">
-      {/* Full Screen Timer */}
       {showFullScreen && (
         <div className="fixed inset-0 bg-gradient-to-br from-black/95 via-blue-900/90 to-purple-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4">
-          {/* Top Right Info */}
           <div className="absolute top-4 right-4 sm:top-8 sm:right-8 text-right">
             <div className="text-lg sm:text-2xl font-light text-white/70">
               {formatDate(currentDateTime)}
             </div>
             <div className="text-sm sm:text-lg font-light text-white/50">
-              {/* Use optional chaining for user name */}
               Hello, {user?.name ?? "Scholar"}
             </div>
           </div>
 
-          {/* Timer Card */}
           <div className="text-center space-y-6 max-w-xl w-full mx-auto p-6 rounded-xl bg-white/5 border border-white/10 shadow-2xl backdrop-blur-sm">
-            {/* Timer Progress Ring */}
             <div className="relative mx-auto w-60 h-60 sm:w-72 sm:h-72">
               <svg className="w-full h-full" viewBox="0 0 100 100">
-                {/* Gradient Definition */}
                 <defs>
                   <linearGradient
-                    id="timerGradient" // Unique ID for gradient
+                    id="timerGradient"
                     x1="0%"
                     y1="0%"
                     x2="100%"
@@ -719,7 +802,7 @@ export default function ProgressPage() {
                   >
                     <stop
                       offset="0%"
-                      stopColor={isBreak ? "#10B981" : "#3B82F6"} // Green for break, Blue for focus
+                      stopColor={isBreak ? "#10B981" : "#3B82F6"}
                     />
                     <stop
                       offset="100%"
@@ -727,7 +810,6 @@ export default function ProgressPage() {
                     />
                   </linearGradient>
                 </defs>
-                {/* Background Circle */}
                 <circle
                   cx="50"
                   cy="50"
@@ -736,26 +818,23 @@ export default function ProgressPage() {
                   stroke="rgba(255,255,255,0.1)"
                   strokeWidth="8"
                 />
-                {/* Progress Circle */}
                 <circle
                   cx="50"
                   cy="50"
                   r="45"
                   fill="none"
-                  stroke="url(#timerGradient)" // Reference gradient by ID
+                  stroke="url(#timerGradient)"
                   strokeWidth="8"
-                  strokeDasharray="282.7" // Circumference (2 * pi * 45)
-                  // Ensure timerProgress is between 0 and 100
+                  strokeDasharray="282.7"
                   strokeDashoffset={
                     282.7 -
                     (282.7 * Math.max(0, Math.min(100, timerProgress))) / 100
                   }
                   transform="rotate(-90 50 50)"
                   strokeLinecap="round"
-                  className="transition-all duration-1000 ease-linear" // Smooth transition for progress
+                  className="transition-all duration-1000 ease-linear"
                 />
               </svg>
-              {/* Timer Text */}
               <div className="absolute inset-0 flex items-center justify-center flex-col">
                 <div className="text-5xl sm:text-7xl font-bold text-white tabular-nums">
                   {formatTime(timeLeft)}
@@ -766,7 +845,6 @@ export default function ProgressPage() {
               </div>
             </div>
 
-            {/* Status Indicator */}
             <div className="text-white text-xl sm:text-2xl font-medium flex items-center justify-center gap-3 mt-4">
               {isBreak ? (
                 <>
@@ -781,26 +859,22 @@ export default function ProgressPage() {
               )}
             </div>
 
-            {/* Current Todo for Pomodoro (if selected) */}
             {currentTodoForPomodoro && currentTodoForPomodoro !== "none" && (
               <div className="bg-white/10 p-4 rounded-lg border border-white/20 mt-4 max-w-md mx-auto">
                 <p className="text-white/70 text-xs uppercase tracking-wider mb-1">
                   Current Task:
                 </p>
                 <p className="text-white text-lg font-medium truncate">
-                  {/* Find the full todo text in case it was selected by value */}
                   {todos.find((t) => t.text === currentTodoForPomodoro)?.text ||
                     currentTodoForPomodoro}
                 </p>
               </div>
             )}
 
-            {/* Motivational Quote */}
             <div className="italic text-white/80 px-4 sm:px-8 py-4 border-l-4 border-blue-500 bg-white/5 rounded-r-lg mt-6 max-w-md mx-auto">
               <p className="text-lg sm:text-xl">"{currentQuote}"</p>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex gap-4 sm:gap-6 justify-center mt-6">
               {isTimerPaused ? (
                 <Button
@@ -819,14 +893,13 @@ export default function ProgressPage() {
               )}
               <Button
                 onClick={resetTimer}
-                variant="destructive" // Use destructive variant for exit/reset
+                variant="destructive"
                 className="px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg rounded-xl"
               >
                 Exit Timer
               </Button>
             </div>
 
-            {/* Pomodoro Count & Points */}
             <div className="flex items-center justify-between text-white bg-white/10 p-4 rounded-lg mt-6 max-w-md mx-auto">
               <div className="text-base sm:text-lg">
                 Completed: <span className="font-bold">{pomodoroCount}</span>
@@ -842,22 +915,49 @@ export default function ProgressPage() {
         </div>
       )}
 
-      {/* Main Page Content */}
       <div className="grid gap-6">
-        {/* Header */}
-        <div className="animate-slide-in-left">
-          <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-green-500">
-            Log Your Progress
-          </h1>
-          <p className="text-muted-foreground">
-            Track your daily academic activities and earn points
-          </p>
-          <div className="mt-2 text-sm text-muted-foreground">
-            {formatDate(currentDateTime)}
+        {progressActivities.length > 0 && (
+          <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertTitle className="text-blue-800 dark:text-blue-300">
+              Today's Progress
+            </AlertTitle>
+            <AlertDescription className="text-blue-700 dark:text-blue-400">
+              You've earned points today from {progressActivities.length}{" "}
+              activities. You can continue to earn more points!
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="animate-slide-in-left">
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-green-500">
+              Log Your Progress
+            </h1>
+            <p className="text-muted-foreground">
+              Track your daily academic activities and earn points
+            </p>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {formatDate(currentDateTime)}
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              const demoDialog = document.getElementById(
+                "demo-modal"
+              ) as HTMLDialogElement | null;
+              if (demoDialog) {
+                demoDialog.showModal();
+              }
+            }}
+            aria-label="How It Works"
+          >
+            <Info className="h-5 w-5" />
+          </Button>
         </div>
 
-        {/* Points Alert */}
         <Alert className="bg-primary/10 border-primary/20 animate-slide-in-right">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Earn points by logging your progress</AlertTitle>
@@ -867,7 +967,6 @@ export default function ProgressPage() {
           </AlertDescription>
         </Alert>
 
-        {/* Tabs */}
         <Tabs defaultValue="attendance" className="w-full animate-fade-in">
           <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
@@ -875,7 +974,6 @@ export default function ProgressPage() {
             <TabsTrigger value="todos">Todo & Timer</TabsTrigger>
           </TabsList>
 
-          {/* Attendance Tab */}
           <TabsContent value="attendance">
             <Card className="border-blue-200 dark:border-blue-800 overflow-hidden hover:shadow-lg transition-all duration-200">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
@@ -892,7 +990,6 @@ export default function ProgressPage() {
                   <Checkbox
                     id="attendance"
                     checked={attendance}
-                    // Pass the correct type expected by shadcn Checkbox
                     onCheckedChange={handleAttendanceToggle}
                     className={`h-6 w-6 transition-opacity ${attendanceLocked ? "opacity-70 cursor-not-allowed" : ""}`}
                     disabled={attendanceLocked}
@@ -902,13 +999,20 @@ export default function ProgressPage() {
                     htmlFor="attendance"
                     className="text-base cursor-pointer"
                   >
-                    I attended lectures today
+                    I Have Studied Today
                   </Label>
+                  {attendancePointsAwarded && (
+                    <Badge className="ml-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                      +5 Points Awarded
+                    </Badge>
+                  )}
                 </div>
                 <div className="mt-4 text-sm text-muted-foreground">
                   {attendance ? (
                     <p className="text-green-600 dark:text-green-400 font-medium">
-                      +5 points will be awarded for attendance.
+                      {attendancePointsAwarded
+                        ? "You've already earned 5 points for attendance today."
+                        : "+5 points will be awarded for attendance."}
                     </p>
                   ) : (
                     <p>Mark attendance to earn 5 points.</p>
@@ -926,7 +1030,6 @@ export default function ProgressPage() {
             </Card>
           </TabsContent>
 
-          {/* Subjects Tab */}
           <TabsContent value="subjects">
             <Card className="border-green-200 dark:border-green-800 overflow-hidden hover:shadow-lg transition-all duration-200">
               <CardHeader className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-950 dark:to-green-900">
@@ -949,9 +1052,8 @@ export default function ProgressPage() {
                       <Checkbox
                         id={`subject-${subject}`}
                         checked={subjects.includes(subject)}
-                        onCheckedChange={() => handleSubjectToggle(subject)} // No value needed here
-                        disabled={subjectsLocked[subject]}
-                        className={`transition-opacity ${subjectsLocked[subject] ? "opacity-70 cursor-not-allowed" : ""}`}
+                        onCheckedChange={() => handleSubjectToggle(subject)}
+                        className="transition-opacity"
                         aria-label={`Mark ${subject} as studied`}
                       />
                       <Label
@@ -960,12 +1062,18 @@ export default function ProgressPage() {
                       >
                         {subject}
                       </Label>
-                      {subjectsLocked[subject] && (
+                      {subjects.includes(subject) && (
                         <Badge
                           variant="outline"
-                          className="ml-auto text-xs px-1.5 py-0.5 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
+                          className={`ml-auto text-xs px-1.5 py-0.5 ${
+                            subjectsPointsAwarded[subject]
+                              ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
+                              : "border-yellow-300 dark:border-yellow-700 text-yellow-700 dark:text-yellow-400"
+                          }`}
                         >
-                          Logged
+                          {subjectsPointsAwarded[subject]
+                            ? "Points Awarded"
+                            : "Logged"}
                         </Badge>
                       )}
                     </div>
@@ -973,25 +1081,47 @@ export default function ProgressPage() {
                 </div>
                 <div className="mt-4 text-sm text-muted-foreground">
                   {subjects.length > 0 ? (
-                    <p className="text-green-600 dark:text-green-400 font-medium">
-                      +{subjects.length * 10} points will be awarded for
-                      subjects.
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-green-600 dark:text-green-400 font-medium">
+                        {subjects.filter(
+                          (subject) => !subjectsPointsAwarded[subject]
+                        ).length > 0
+                          ? `+${subjects.filter((subject) => !subjectsPointsAwarded[subject]).length * 10} points will be awarded for new subjects.`
+                          : "No new subject points available."}
+                      </p>
+                      {subjects.filter(
+                        (subject) => !subjectsPointsAwarded[subject]
+                      ).length > 0 && (
+                        <div className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 flex items-center">
+                          <span>
+                            {
+                              subjects.filter(
+                                (subject) => !subjectsPointsAwarded[subject]
+                              ).length
+                            }{" "}
+                            × 10 ={" "}
+                            {subjects.filter(
+                              (subject) => !subjectsPointsAwarded[subject]
+                            ).length * 10}{" "}
+                            pts
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <p>Select subjects to earn 10 points each.</p>
                   )}
                 </div>
                 <div className="mt-2 p-3 bg-green-50 dark:bg-green-900/30 rounded-md text-sm border border-green-100 dark:border-green-800">
                   <span className="text-green-700 dark:text-green-300">
-                    Note: Once a subject is marked, it is logged for today and
-                    cannot be unmarked.
+                    Note: You can uncheck a subject if you accidentally marked
+                    it. Points will be adjusted accordingly.
                   </span>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Todos & Timer Tab */}
           <TabsContent value="todos">
             <Card className="border-orange-200 dark:border-orange-800 overflow-hidden hover:shadow-lg transition-all duration-200">
               <CardHeader className="bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900">
@@ -1004,7 +1134,6 @@ export default function ProgressPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-6">
-                {/* Add Todo Form */}
                 <form onSubmit={handleAddTodo} className="flex gap-2 mb-6">
                   <Input
                     placeholder="Add a new task..."
@@ -1015,16 +1144,15 @@ export default function ProgressPage() {
                   />
                   <Button
                     type="submit"
-                    size="icon" // Make button square for icon
+                    size="icon"
                     className="bg-orange-500 hover:bg-orange-600"
                     aria-label="Add new todo"
-                    disabled={!newTodo.trim()} // Disable if input is empty
+                    disabled={!newTodo.trim()}
                   >
                     <Plus className="h-5 w-5" />
                   </Button>
                 </form>
 
-                {/* Todo List */}
                 <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 mb-6 border-t border-b py-4 border-border">
                   {todos.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
@@ -1034,7 +1162,7 @@ export default function ProgressPage() {
                   ) : (
                     todos.map((todo, index) => (
                       <div
-                        key={todo.$id} // Use the actual ID as key
+                        key={todo.$id}
                         className={`flex items-center justify-between p-3 rounded-lg border animate-fade-in transition-colors ${
                           todo.completed
                             ? "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800 opacity-70"
@@ -1043,13 +1171,11 @@ export default function ProgressPage() {
                         style={{ animationDelay: `${index * 0.05}s` }}
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {" "}
-                          {/* Added min-w-0 for truncate */}
                           <Checkbox
                             id={`todo-${todo.$id}`}
                             checked={todo.completed}
                             onCheckedChange={() => handleToggleTodo(todo.$id)}
-                            aria-labelledby={`todo-label-${todo.$id}`} // Accessibility
+                            aria-labelledby={`todo-label-${todo.$id}`}
                             className={
                               todo.completed
                                 ? "border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:text-white"
@@ -1057,16 +1183,24 @@ export default function ProgressPage() {
                             }
                           />
                           <Label
-                            id={`todo-label-${todo.$id}`} // Accessibility
+                            id={`todo-label-${todo.$id}`}
                             htmlFor={`todo-${todo.$id}`}
                             className={`flex-1 truncate cursor-pointer ${todo.completed ? "line-through text-muted-foreground" : ""}`}
                           >
                             {todo.text}
                           </Label>
+                          {todo.completed && todo.pointsAwarded && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs px-1.5 py-0.5 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400"
+                            >
+                              +15 Awarded
+                            </Badge>
+                          )}
                         </div>
                         <Button
                           variant="ghost"
-                          size="icon" // Make button square
+                          size="icon"
                           onClick={() => handleDeleteTodo(todo.$id)}
                           className="text-muted-foreground hover:text-destructive h-8 w-8 ml-2"
                           aria-label={`Delete todo: ${todo.text}`}
@@ -1078,19 +1212,25 @@ export default function ProgressPage() {
                   )}
                 </div>
 
-                {/* Points Summary for Todos */}
                 <div className="mb-6 text-sm text-muted-foreground">
-                  {todos.filter((t) => t.completed).length > 0 ? (
+                  {todos.filter((t) => t.completed && !t.pointsAwarded).length >
+                  0 ? (
                     <p className="text-green-600 dark:text-green-400 font-medium">
-                      +{todos.filter((t) => t.completed).length * 15} points
-                      will be awarded for completed todos.
+                      +
+                      {todos.filter((t) => t.completed && !t.pointsAwarded)
+                        .length * 15}{" "}
+                      points will be awarded for newly completed todos.
+                    </p>
+                  ) : todos.filter((t) => t.completed).length > 0 ? (
+                    <p className="text-amber-600 dark:text-amber-400 font-medium">
+                      Complete more todos or mark existing ones as incomplete
+                      and complete them again to earn more points.
                     </p>
                   ) : (
                     <p>Complete todos to earn 15 points each.</p>
                   )}
                 </div>
 
-                {/* Pomodoro Timer Section */}
                 <div className="bg-muted/50 dark:bg-muted/20 p-4 rounded-lg border border-border">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-semibold flex items-center gap-2 text-base">
@@ -1117,10 +1257,8 @@ export default function ProgressPage() {
                     </Button>
                   </div>
 
-                  {/* Timer Settings (Collapsible) */}
                   {isEditingTime && (
                     <div className="space-y-4 mb-6 animate-fade-in border-t pt-4 mt-2 border-border">
-                      {/* Focus Time Slider */}
                       <div>
                         <div className="flex justify-between items-center mb-1">
                           <Label
@@ -1180,7 +1318,6 @@ export default function ProgressPage() {
                         </div>
                       </div>
 
-                      {/* Break Time Slider */}
                       <div>
                         <Label
                           htmlFor="break-minutes"
@@ -1236,13 +1373,10 @@ export default function ProgressPage() {
                     </div>
                   )}
 
-                  {/* Timer Controls */}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Select
                       value={currentTodoForPomodoro}
                       onValueChange={setCurrentTodoForPomodoro}
-                      // Disable if timer is active? Optional UX choice.
-                      // disabled={isTimerActive}
                     >
                       <SelectTrigger className="w-full sm:flex-1">
                         <SelectValue placeholder="Focus on a task (optional)" />
@@ -1261,33 +1395,44 @@ export default function ProgressPage() {
                     <Button
                       onClick={startTimer}
                       className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white w-full sm:w-auto"
-                      disabled={isTimerActive} // Disable Start if already active
+                      disabled={isTimerActive}
                     >
                       <Timer className="h-4 w-4 mr-2" /> Start Focus Session
                     </Button>
                   </div>
 
-                  {/* Pomodoro Session Info */}
                   {pomodoroCount > 0 && (
-                    <div className="mt-4 text-sm text-center sm:text-left text-green-600 dark:text-green-400 font-medium">
-                      Completed {pomodoroCount} focus session
-                      {pomodoroCount > 1 ? "s" : ""}, earning +
-                      {calculatePomodoroPoints()} points!
+                    <div className="mt-4 text-sm text-center sm:text-left">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <p className="text-green-600 dark:text-green-400 font-medium">
+                          Completed {pomodoroCount} focus session
+                          {pomodoroCount > 1 ? "s" : ""}
+                        </p>
+                        {pomodoroCount > lastPomodoroPointsAwarded ? (
+                          <Badge className="self-center sm:self-auto bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                            +{calculateNewPomodoroPoints()} points available
+                          </Badge>
+                        ) : (
+                          <Badge className="self-center sm:self-auto bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
+                            Points already awarded
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground text-xs mt-1">
+                        {lastPomodoroPointsAwarded > 0
+                          ? `${lastPomodoroPointsAwarded} sessions already awarded points. Complete more for additional points!`
+                          : "Submit to earn points for your focus sessions."}
+                      </p>
                     </div>
                   )}
                 </div>
               </CardContent>
-              {/* Removed footer from todo card unless needed */}
-              {/* <CardFooter className="bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 p-4">...</CardFooter> */}
             </Card>
           </TabsContent>
         </Tabs>
 
-        {/* Summary Floating Button & Modal */}
-        {/* FAB */}
         <div className="fixed bottom-6 right-6 z-40">
           <Button
-            // Check if dialog exists before trying to show it
             onClick={() => {
               const dialog = document.getElementById(
                 "summary-modal"
@@ -1305,14 +1450,134 @@ export default function ProgressPage() {
           </Button>
         </div>
 
-        {/* Summary Modal */}
+        <dialog
+          id="demo-modal"
+          className="modal modal-bottom sm:modal-middle p-0 rounded-t-xl sm:rounded-xl max-w-4xl w-full mx-auto"
+          aria-labelledby="demo-title"
+        >
+          <div className="modal-box p-0 bg-background rounded-t-xl sm:rounded-xl w-full max-w-4xl mx-auto overflow-hidden border border-border shadow-2xl">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 p-4 flex justify-between items-center sticky top-0 z-10 border-b border-border">
+              <h2 id="demo-title" className="text-xl font-bold">
+                How It Works
+              </h2>
+              <form method="dialog">
+                <Button variant="ghost" size="icon" aria-label="Close demo">
+                  <X className="h-5 w-5" />
+                </Button>
+              </form>
+            </div>
+            <div className="p-6 max-h-[65vh] overflow-y-auto">
+              <div className="space-y-6">
+                <section>
+                  <h3 className="text-lg font-semibold mb-2">
+                    Welcome to Progress Tracker!
+                  </h3>
+                  <p className="text-muted-foreground">
+                    This app helps you track your daily academic activities and
+                    earn points to stay motivated.
+                  </p>
+                </section>
+                <section>
+                  <h3 className="text-lg font-semibold mb-2">Features</h3>
+                  <ul className="space-y-4">
+                    <li>
+                      <div className="flex items-start gap-3">
+                        <Calendar className="h-5 w-5 text-blue-500 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium">Attendance</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Mark if you attended lectures today. Earn +5 points.
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                    <li>
+                      <div className="flex items-start gap-3">
+                        <BookOpen className="h-5 w-5 text-green-500 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium">Subjects</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Log the subjects you studied today. Earn +10 points
+                            each.
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                    <li>
+                      <div className="flex items-start gap-3">
+                        <List className="h-5 w-5 text-orange-500 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium">Todo List</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Add and complete tasks. Earn +15 points each.
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                    <li>
+                      <div className="flex items-start gap-3">
+                        <Timer className="h-5 w-5 text-purple-500 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium">Pomodoro Timer</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Use the timer for focused study sessions. Earn +20
+                            points per session (adjusted by focus time).
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  </ul>
+                </section>
+                <section>
+                  <h3 className="text-lg font-semibold mb-2">How to Use</h3>
+                  <ol className="space-y-4 list-decimal list-inside">
+                    <li>
+                      <span className="font-medium">Log Activities:</span> Use
+                      the tabs to navigate between Attendance, Subjects, and
+                      Todo & Timer. Mark attendance, select subjects, add and
+                      complete todos, and use the Pomodoro timer.
+                    </li>
+                    <li>
+                      <span className="font-medium">Review Progress:</span>{" "}
+                      Click the floating button at the bottom right to open the
+                      Summary Modal. Review your earned points from each
+                      activity.
+                    </li>
+                    <li>
+                      <span className="font-medium">Submit Progress:</span> In
+                      the Summary Modal, click "Submit Progress" to save your
+                      progress and earn points. Your points will be added to
+                      your total, and you can see your ranking on the
+                      leaderboard.
+                    </li>
+                  </ol>
+                </section>
+                <section>
+                  <h3 className="text-lg font-semibold mb-2">Tips</h3>
+                  <ul className="space-y-2 list-disc list-inside text-sm text-muted-foreground">
+                    <li>
+                      You can submit your progress multiple times a day to earn
+                      more points.
+                    </li>
+                    <li>
+                      Complete more activities to maximize your daily points.
+                    </li>
+                    <li>
+                      Use the Pomodoro timer for effective study sessions.
+                    </li>
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </div>
+        </dialog>
+
         <dialog
           id="summary-modal"
           className="modal modal-bottom sm:modal-middle p-0 rounded-t-xl sm:rounded-xl max-w-4xl w-full mx-auto"
           aria-labelledby="summary-title"
         >
           <div className="modal-box p-0 bg-background rounded-t-xl sm:rounded-xl w-full max-w-4xl mx-auto overflow-hidden border border-border shadow-2xl">
-            {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 p-4 flex justify-between items-center sticky top-0 z-10 border-b border-border">
               <div>
                 <h2 id="summary-title" className="text-xl font-bold">
@@ -1328,9 +1593,8 @@ export default function ProgressPage() {
                   <span className="font-bold text-lg tabular-nums">
                     {calculatePoints()}
                   </span>
-                  <span className="text-xs text-muted-foreground">pts</span>
+                  <span className="text-xs text-muted-foreground">new pts</span>
                 </div>
-                {/* Modal Close Button */}
                 <form method="dialog" className="ml-2">
                   <Button
                     variant="ghost"
@@ -1343,9 +1607,7 @@ export default function ProgressPage() {
               </div>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6 max-h-[65vh] overflow-y-auto">
-              {/* Summary Tabs */}
               <Tabs defaultValue="all" className="w-full">
                 <TabsList className="grid w-full grid-cols-4 mb-6 sticky top-0 bg-background/95 backdrop-blur-sm z-10 py-2">
                   <TabsTrigger value="all">All</TabsTrigger>
@@ -1354,10 +1616,8 @@ export default function ProgressPage() {
                   <TabsTrigger value="todos">Todos & Timer</TabsTrigger>
                 </TabsList>
 
-                {/* All Summary Tab */}
                 <TabsContent value="all">
                   <div className="grid gap-4 md:grid-cols-2">
-                    {/* Attendance Card */}
                     <Card className="border-blue-200 dark:border-blue-800 overflow-hidden">
                       <CardHeader className="bg-blue-50 dark:bg-blue-950/50 p-3">
                         <div className="flex justify-between items-center">
@@ -1369,7 +1629,9 @@ export default function ProgressPage() {
                             variant="outline"
                             className={`text-xs ${attendance ? "border-blue-500 text-blue-600 dark:border-blue-600 dark:text-blue-300" : ""}`}
                           >
-                            {attendance ? "+5 pts" : "0 pts"}
+                            {attendance && !attendancePointsAwarded
+                              ? "+5 pts"
+                              : "0 pts"}
                           </Badge>
                         </div>
                       </CardHeader>
@@ -1378,7 +1640,9 @@ export default function ProgressPage() {
                           <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                             <CheckCircle className="h-5 w-5" />
                             <span className="font-medium text-sm">
-                              Attended
+                              Attended{" "}
+                              {attendancePointsAwarded &&
+                                "(Points Already Awarded)"}
                             </span>
                           </div>
                         ) : (
@@ -1390,7 +1654,6 @@ export default function ProgressPage() {
                       </CardContent>
                     </Card>
 
-                    {/* Pomodoro Card */}
                     <Card className="border-purple-200 dark:border-purple-800 overflow-hidden">
                       <CardHeader className="bg-purple-50 dark:bg-purple-950/50 p-3">
                         <div className="flex justify-between items-center">
@@ -1400,9 +1663,9 @@ export default function ProgressPage() {
                           </CardTitle>
                           <Badge
                             variant="outline"
-                            className={`text-xs ${pomodoroCount > 0 ? "border-purple-500 text-purple-600 dark:border-purple-600 dark:text-purple-300" : ""}`}
+                            className={`text-xs ${pomodoroCount > lastPomodoroPointsAwarded ? "border-purple-500 text-purple-600 dark:border-purple-600 dark:text-purple-300" : ""}`}
                           >
-                            +{calculatePomodoroPoints()} pts
+                            +{calculateNewPomodoroPoints()} pts
                           </Badge>
                         </div>
                       </CardHeader>
@@ -1418,6 +1681,12 @@ export default function ProgressPage() {
                             <div className="text-xs mt-0.5">
                               ({focusMinutes}/{breakMinutes} min)
                             </div>
+                            {lastPomodoroPointsAwarded > 0 && (
+                              <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                {lastPomodoroPointsAwarded} sessions already
+                                awarded
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 text-muted-foreground">
@@ -1428,7 +1697,6 @@ export default function ProgressPage() {
                       </CardContent>
                     </Card>
 
-                    {/* Subjects Card */}
                     <Card className="border-green-200 dark:border-green-800 overflow-hidden md:col-span-2">
                       <CardHeader className="bg-green-50 dark:bg-green-950/50 p-3">
                         <div className="flex justify-between items-center">
@@ -1438,9 +1706,12 @@ export default function ProgressPage() {
                           </CardTitle>
                           <Badge
                             variant="outline"
-                            className={`text-xs ${subjects.length > 0 ? "border-green-500 text-green-600 dark:border-green-600 dark:text-green-300" : ""}`}
+                            className={`text-xs ${subjects.filter((s) => !subjectsPointsAwarded[s]).length > 0 ? "border-green-500 text-green-600 dark:border-green-600 dark:text-green-300" : ""}`}
                           >
-                            +{subjects.length * 10} pts
+                            +
+                            {subjects.filter((s) => !subjectsPointsAwarded[s])
+                              .length * 10}{" "}
+                            pts
                           </Badge>
                         </div>
                       </CardHeader>
@@ -1451,9 +1722,14 @@ export default function ProgressPage() {
                               <Badge
                                 key={subject}
                                 variant="secondary"
-                                className="text-xs font-normal bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300"
+                                className={`text-xs font-normal ${
+                                  subjectsPointsAwarded[subject]
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300"
+                                    : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300"
+                                }`}
                               >
-                                {subject}
+                                {subject}{" "}
+                                {subjectsPointsAwarded[subject] && "✓"}
                               </Badge>
                             ))}
                           </div>
@@ -1465,7 +1741,6 @@ export default function ProgressPage() {
                       </CardContent>
                     </Card>
 
-                    {/* Todos Card */}
                     <Card className="border-orange-200 dark:border-orange-800 overflow-hidden md:col-span-2">
                       <CardHeader className="bg-orange-50 dark:bg-orange-950/50 p-3">
                         <div className="flex justify-between items-center">
@@ -1475,9 +1750,13 @@ export default function ProgressPage() {
                           </CardTitle>
                           <Badge
                             variant="outline"
-                            className={`text-xs ${todos.filter((t) => t.completed).length > 0 ? "border-orange-500 text-orange-600 dark:border-orange-600 dark:text-orange-300" : ""}`}
+                            className={`text-xs ${todos.filter((t) => t.completed && !t.pointsAwarded).length > 0 ? "border-orange-500 text-orange-600 dark:border-orange-600 dark:text-orange-300" : ""}`}
                           >
-                            +{todos.filter((t) => t.completed).length * 15} pts
+                            +
+                            {todos.filter(
+                              (t) => t.completed && !t.pointsAwarded
+                            ).length * 15}{" "}
+                            pts
                           </Badge>
                         </div>
                       </CardHeader>
@@ -1489,12 +1768,22 @@ export default function ProgressPage() {
                               .map((todo) => (
                                 <div
                                   key={todo.$id}
-                                  className="text-xs flex items-center gap-1.5 p-1 rounded bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300"
+                                  className={`text-xs flex items-center gap-1.5 p-1 rounded ${
+                                    todo.pointsAwarded
+                                      ? "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300"
+                                      : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300"
+                                  }`}
                                 >
                                   <CheckCircle className="h-3 w-3 flex-shrink-0" />
                                   <span className="line-through truncate">
                                     {todo.text}
                                   </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="ml-auto text-xs px-1 py-0 border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-300"
+                                  >
+                                    {todo.pointsAwarded ? "Awarded" : "+15"}
+                                  </Badge>
                                 </div>
                               ))}
                           </div>
@@ -1508,7 +1797,6 @@ export default function ProgressPage() {
                   </div>
                 </TabsContent>
 
-                {/* Attendance Summary Tab */}
                 <TabsContent value="attendance">
                   <Card>
                     <CardHeader className="pb-2">
@@ -1529,7 +1817,9 @@ export default function ProgressPage() {
                             Attendance Confirmed
                           </h3>
                           <p className="text-muted-foreground text-sm mt-1">
-                            You earned +5 points.
+                            {attendancePointsAwarded
+                              ? "You've already earned 5 points for attendance today."
+                              : "You will earn +5 points."}
                           </p>
                         </div>
                       ) : (
@@ -1549,7 +1839,6 @@ export default function ProgressPage() {
                   </Card>
                 </TabsContent>
 
-                {/* Subjects Summary Tab */}
                 <TabsContent value="subjects">
                   <Card>
                     <CardHeader className="pb-2">
@@ -1567,7 +1856,11 @@ export default function ProgressPage() {
                             {subjects.map((subject, index) => (
                               <div
                                 key={subject}
-                                className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 text-center animate-fade-in"
+                                className={`p-3 rounded-lg ${
+                                  subjectsPointsAwarded[subject]
+                                    ? "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800"
+                                    : "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800"
+                                } text-center animate-fade-in`}
                                 style={{ animationDelay: `${index * 0.05}s` }}
                               >
                                 <BookOpen className="h-6 w-6 mx-auto mb-1 text-green-500" />
@@ -1575,17 +1868,22 @@ export default function ProgressPage() {
                                   {subject}
                                 </div>
                                 <div className="text-xs text-green-600 dark:text-green-400 mt-0.5">
-                                  +10 pts
+                                  {subjectsPointsAwarded[subject]
+                                    ? "Points Awarded"
+                                    : "+10 pts"}
                                 </div>
                               </div>
                             ))}
                           </div>
                           <div className="flex items-center justify-between p-3 rounded-lg bg-green-100 dark:bg-green-900/40 border border-green-200 dark:border-green-700">
                             <div className="font-medium text-sm">
-                              Total Subject Points
+                              New Subject Points
                             </div>
                             <div className="text-lg font-bold text-green-600 dark:text-green-400 tabular-nums">
-                              +{subjects.length * 10} pts
+                              +
+                              {subjects.filter((s) => !subjectsPointsAwarded[s])
+                                .length * 10}{" "}
+                              pts
                             </div>
                           </div>
                         </div>
@@ -1604,7 +1902,6 @@ export default function ProgressPage() {
                   </Card>
                 </TabsContent>
 
-                {/* Todos & Timer Summary Tab */}
                 <TabsContent value="todos">
                   <Card>
                     <CardHeader className="pb-2">
@@ -1616,7 +1913,6 @@ export default function ProgressPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-4 space-y-6">
-                      {/* Todo Progress */}
                       <div>
                         <h4 className="font-medium mb-2 text-sm flex items-center gap-1.5">
                           <List className="h-4 w-4" /> Todo Completion
@@ -1648,7 +1944,11 @@ export default function ProgressPage() {
                                 .map((todo) => (
                                   <div
                                     key={todo.$id}
-                                    className="text-xs flex items-center gap-1.5 p-1.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-900/40 border border-orange-200 dark:border-orange-700"
+                                    className={`text-xs flex items-center gap-1.5 p-1.5 rounded border ${
+                                      todo.pointsAwarded
+                                        ? "bg-orange-100 text-orange-800 dark:bg-orange-900/40 border-orange-200 dark:border-orange-700"
+                                        : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 border-yellow-200 dark:border-yellow-700"
+                                    }`}
                                   >
                                     <CheckCircle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
                                     <span className="line-through truncate">
@@ -1658,17 +1958,20 @@ export default function ProgressPage() {
                                       variant="outline"
                                       className="ml-auto text-xs px-1 py-0 border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-300"
                                     >
-                                      +15
+                                      {todo.pointsAwarded ? "Awarded" : "+15"}
                                     </Badge>
                                   </div>
                                 ))}
                             </div>
                             <div className="flex items-center justify-between p-3 rounded-lg bg-orange-100 dark:bg-orange-900/40 border border-orange-200 dark:border-orange-700 mt-2">
                               <div className="font-medium text-sm">
-                                Total Todo Points
+                                New Todo Points
                               </div>
                               <div className="text-lg font-bold text-orange-600 dark:text-orange-400 tabular-nums">
-                                +{todos.filter((t) => t.completed).length * 15}{" "}
+                                +
+                                {todos.filter(
+                                  (t) => t.completed && !t.pointsAwarded
+                                ).length * 15}{" "}
                                 pts
                               </div>
                             </div>
@@ -1680,7 +1983,6 @@ export default function ProgressPage() {
                         )}
                       </div>
 
-                      {/* Pomodoro Progress */}
                       <div>
                         <h4 className="font-medium mb-2 text-sm flex items-center gap-1.5">
                           <Timer className="h-4 w-4" /> Pomodoro Sessions
@@ -1695,9 +1997,15 @@ export default function ProgressPage() {
                                 {pomodoroCount} x ({focusMinutes} min focus /{" "}
                                 {breakMinutes} min break)
                               </div>
+                              {lastPomodoroPointsAwarded > 0 && (
+                                <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                  {lastPomodoroPointsAwarded} sessions already
+                                  awarded points
+                                </div>
+                              )}
                             </div>
                             <div className="text-lg font-bold text-purple-600 dark:text-purple-400 tabular-nums">
-                              +{calculatePomodoroPoints()} pts
+                              +{calculateNewPomodoroPoints()} pts
                             </div>
                           </div>
                         ) : (
@@ -1712,14 +2020,11 @@ export default function ProgressPage() {
               </Tabs>
             </div>
 
-            {/* Modal Footer - Submit Action */}
             <div className="p-4 sm:p-6 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-t border-border sticky bottom-0">
               <div className="flex flex-col sm:flex-row gap-4 items-center">
-                {/* Final Point Summary */}
                 <div className="bg-background dark:bg-muted/30 rounded-lg p-3 flex-1 w-full sm:w-auto border border-border">
                   <div className="flex items-center gap-3">
                     <div className="relative w-12 h-12">
-                      {/* Use a unique ID for the gradient in the modal */}
                       <svg className="w-full h-full" viewBox="0 0 100 100">
                         <defs>
                           <linearGradient
@@ -1729,10 +2034,8 @@ export default function ProgressPage() {
                             x2="100%"
                             y2="100%"
                           >
-                            <stop offset="0%" stopColor="#3B82F6" />{" "}
-                            {/* Blue */}
-                            <stop offset="100%" stopColor="#10B981" />{" "}
-                            {/* Green */}
+                            <stop offset="0%" stopColor="#3B82F6" />
+                            <stop offset="100%" stopColor="#10B981" />
                           </linearGradient>
                         </defs>
                         <circle
@@ -1748,11 +2051,9 @@ export default function ProgressPage() {
                           cy="50"
                           r="45"
                           fill="none"
-                          stroke="url(#modalGradient)" // Reference unique gradient
+                          stroke="url(#modalGradient)"
                           strokeWidth="10"
                           strokeDasharray="282.7"
-                          // Calculate progress visually (e.g., points / target points, or just fill based on having points)
-                          // Simple approach: 100% if points > 0, 0% otherwise
                           strokeDashoffset={calculatePoints() > 0 ? 0 : 282.7}
                           transform="rotate(-90 50 50)"
                           strokeLinecap="round"
@@ -1768,18 +2069,24 @@ export default function ProgressPage() {
                         {calculatePoints()}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Total Points Earned Today
+                        New Points Available
                       </div>
                     </div>
                   </div>
                 </div>
-                {/* Submit Button */}
                 <Button
                   onClick={handleSubmit}
-                  className="w-full sm:w-auto sm:flex-initial px-8 py-3 text-base bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-                  disabled={calculatePoints() === 0} // Disable if no points earned
+                  className={`w-full sm:w-auto sm:flex-initial px-8 py-3 text-base bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 ${calculatePoints() > 0 ? "hover:scale-105" : ""}`}
+                  disabled={calculatePoints() === 0 || isSubmitting}
                 >
-                  Submit Today's Progress
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Submitting...
+                    </span>
+                  ) : (
+                    "Submit Progress"
+                  )}
                 </Button>
               </div>
             </div>

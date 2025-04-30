@@ -19,7 +19,6 @@ import {
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// List of Maharashtra districts
 const MAHARASHTRA_DISTRICTS = [
   "Ahmednagar",
   "Akola",
@@ -68,8 +67,11 @@ export default function RegisterPage() {
   const [studentClass, setStudentClass] = useState("");
   const [district, setDistrict] = useState("");
   const [error, setError] = useState("");
-  const { register, loading } = useAuth();
+  const { register, loading, user } = useAuth();
   const navigate = useNavigate();
+  if (user) {
+    navigate({ to: "/dashboard" });
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +95,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // Validate phone number format (10 digits)
     if (!/^\d{10}$/.test(phoneNo)) {
       setError("Phone number must be 10 digits");
       return;
@@ -101,11 +102,15 @@ export default function RegisterPage() {
 
     try {
       await register(name, email, password, studentClass, district, phoneNo);
+
       navigate({
         to: "/dashboard",
       });
     } catch (err) {
-      setError("Registration failed. Please try again.");
+      setError(
+        "Registration failed. Please try again." +
+          (err instanceof Error ? err.message : "")
+      );
     }
   };
 

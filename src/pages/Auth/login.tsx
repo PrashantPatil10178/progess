@@ -19,11 +19,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login, loginWithGoogle, loading } = useAuth();
+  const { login, loginWithGoogle, loading, user } = useAuth();
   const navigate = useNavigate();
 
   interface FormSubmitEvent extends React.FormEvent<HTMLFormElement> {
     preventDefault(): void;
+  }
+  if (user) {
+    navigate({ to: "/dashboard" });
   }
 
   const handleSubmit = async (e: FormSubmitEvent): Promise<void> => {
@@ -46,7 +49,6 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     try {
       await loginWithGoogle();
-      navigate({ to: "/dashboard" });
     } catch (err) {
       setError("Google login failed. Please try again.");
     }

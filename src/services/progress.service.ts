@@ -6,7 +6,6 @@ import {
   ID,
 } from "@/lib/appwrite";
 
-// Get today's progress for a user
 export const getTodayProgress = async (userId: string) => {
   try {
     const today = new Date();
@@ -32,7 +31,6 @@ export const getTodayProgress = async (userId: string) => {
   }
 };
 
-// Get recent progress entries for a user
 export const getRecentProgress = async (userId: string, limit = 10) => {
   try {
     const response = await databases.listDocuments(
@@ -40,7 +38,7 @@ export const getRecentProgress = async (userId: string, limit = 10) => {
       PROGRESS_COLLECTION_ID,
       [
         Query.equal("userId", userId),
-        Query.orderDesc("date"), // Most recent first
+        Query.orderDesc("date"),
         Query.limit(limit),
       ]
     );
@@ -64,7 +62,6 @@ export const logProgress = async (userId: string, progressData: any) => {
       [Query.equal("userId", userId), Query.equal("date", formattedDate)]
     );
 
-    // If progress exists for today, update it
     if (existingProgress.documents.length > 0) {
       const progressId = existingProgress.documents[0].$id;
       return await databases.updateDocument(
@@ -94,7 +91,6 @@ export const logProgress = async (userId: string, progressData: any) => {
   }
 };
 
-// Get progress for a specific date
 export const getProgressByDate = async (userId: string, date: string) => {
   try {
     const response = await databases.listDocuments(
@@ -138,10 +134,8 @@ export const getWeeklyProgress = async (
   }
 };
 
-// Get progress for a specific month
 export const getMonthlyProgress = async (userId: string, monthYear: string) => {
   try {
-    // monthYear should be in format "YYYY-MM"
     const startDate = `${monthYear}-01`;
     const endMonth = parseInt(monthYear.split("-")[1], 10);
     const endYear = parseInt(monthYear.split("-")[0], 10);

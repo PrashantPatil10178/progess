@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { functions } from "@/lib/appwrite";
 
 const MAHARASHTRA_DISTRICTS = [
   "Ahmednagar",
@@ -89,7 +90,6 @@ export default function ProfilePage() {
     from: undefined,
     strict: false,
   });
-  console.log("Search params:", search);
   const [requirePhone, setRequirePhone] = useState(
     search.requirePhone === "true"
   );
@@ -112,12 +112,11 @@ export default function ProfilePage() {
       setPhoneNo(user.phoneNo || "");
       setIsLoading(false);
 
-      // Auto-enable edit mode if phone is required
       if (requirePhone && !user.phoneNo) {
         setIsEditing(true);
         setTimeout(() => {
           phoneInputRef.current?.focus();
-        }, 100);
+        }, 300);
       }
     }
   }, [user, requirePhone]);
@@ -153,9 +152,12 @@ export default function ProfilePage() {
         District,
         phoneNo,
       });
+      functions.createExecution(
+        "6811050a0016f9478345",
+        JSON.stringify({ userId: user?.$id })
+      );
       setIsEditing(false);
       setPhoneError("");
-      // Remove the phone requirement banner if phone was added
       if (requirePhone && phoneNo) {
         setRequirePhone(false);
       }
@@ -171,9 +173,7 @@ export default function ProfilePage() {
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <h2 className="text-2xl font-bold animate-pulse">
-            Loading profile...
-          </h2>
+          <h2 className="text-2xl font-bold">Loading profile...</h2>
           <p className="text-muted-foreground">Retrieving your information</p>
         </div>
       </div>
@@ -194,7 +194,7 @@ export default function ProfilePage() {
   return (
     <div className="container py-8">
       <div className="grid gap-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-slide-in-left">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-green-500">
             My Profile
           </h1>
@@ -202,7 +202,7 @@ export default function ProfilePage() {
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 animate-fade-in"
+              className="gap-2"
               onClick={() => setIsEditing(true)}
             >
               <Edit className="h-4 w-4" />
@@ -211,9 +211,8 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Notification Banner for Required Phone */}
         {requirePhone && !phoneNo && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 animate-bounce-in">
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
                 <AlertCircle className="h-5 w-5 text-yellow-400" />
@@ -230,19 +229,19 @@ export default function ProfilePage() {
         )}
 
         <div className="grid gap-6 md:grid-cols-3">
-          <Card className="md:col-span-1 animate-scale border-blue-200 dark:border-blue-800 overflow-hidden hover:shadow-lg transition-all duration-200">
+          <Card className="md:col-span-1 border-blue-200 dark:border-blue-800 overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
               <CardTitle>Profile Information</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center text-center p-6">
-              <Avatar className="h-24 w-24 mb-4 border-4 border-primary animate-glow">
+              <Avatar className="h-24 w-24 mb-4 border-4 border-primary">
                 <AvatarFallback className="text-2xl">
                   {user?.name?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>
 
               {isEditing ? (
-                <div className="w-full space-y-4 animate-fade-in">
+                <div className="w-full space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Name</Label>
                     <Input
@@ -337,7 +336,7 @@ export default function ProfilePage() {
                         (statistics.totalPoints / 500) * 100,
                         100
                       )}
-                      className="h-2 animate-shimmer"
+                      className="h-2"
                     />
                     <p className="text-xs text-muted-foreground mt-2">
                       {Math.floor((statistics.totalPoints / 500) * 100)}% to
@@ -373,7 +372,7 @@ export default function ProfilePage() {
             )}
           </Card>
 
-          <Card className="md:col-span-2 animate-slide-in-right border-blue-200 dark:border-blue-800 overflow-hidden hover:shadow-lg transition-all duration-200">
+          <Card className="md:col-span-2 border-blue-200 dark:border-blue-800 overflow-hidden">
             <Tabs defaultValue="statistics">
               <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
                 <div className="flex items-center justify-between">
@@ -391,7 +390,7 @@ export default function ProfilePage() {
               <TabsContent value="statistics">
                 <CardContent className="p-6">
                   <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="flex items-center gap-4 animate-fade-in">
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-blue-100 p-3 dark:bg-blue-900">
                         <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       </div>
@@ -404,10 +403,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center gap-4 animate-fade-in"
-                      style={{ animationDelay: "0.1s" }}
-                    >
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-green-100 p-3 dark:bg-green-900">
                         <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                       </div>
@@ -420,10 +416,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center gap-4 animate-fade-in"
-                      style={{ animationDelay: "0.2s" }}
-                    >
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-purple-100 p-3 dark:bg-purple-900">
                         <BookOpen className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                       </div>
@@ -436,10 +429,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center gap-4 animate-fade-in"
-                      style={{ animationDelay: "0.3s" }}
-                    >
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-orange-100 p-3 dark:bg-orange-900">
                         <Target className="h-5 w-5 text-orange-600 dark:text-orange-400" />
                       </div>
@@ -452,12 +442,9 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center gap-4 animate-fade-in"
-                      style={{ animationDelay: "0.4s" }}
-                    >
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-red-100 p-3 dark:bg-red-900">
-                        <Flame className="h-5 w-5 text-red-600 dark:text-red-400 animate-bounce-slow" />
+                        <Flame className="h-5 w-5 text-red-600 dark:text-red-400" />
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">
@@ -468,10 +455,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center gap-4 animate-fade-in"
-                      style={{ animationDelay: "0.5s" }}
-                    >
+                    <div className="flex items-center gap-4">
                       <div className="rounded-full bg-yellow-100 p-3 dark:bg-yellow-900">
                         <Medal className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
                       </div>
@@ -495,16 +479,15 @@ export default function ProfilePage() {
                       {user.badges.map((badge, index) => (
                         <div
                           key={index}
-                          className="flex flex-col items-center text-center p-4 rounded-lg border animate-scale bg-primary/5 border-primary/30"
-                          style={{ animationDelay: `${index * 0.1}s` }}
+                          className="flex flex-col items-center text-center p-4 rounded-lg border bg-primary/5 border-primary/30"
                         >
                           <div className="rounded-full p-3 bg-primary/10">
-                            <Award className="h-6 w-6 text-primary animate-bounce-slow" />
+                            <Award className="h-6 w-6 text-primary" />
                           </div>
                           <div className="mt-2 font-medium">{badge}</div>
                           <Badge
                             variant="outline"
-                            className="mt-2 text-xs bg-gradient-to-r from-green-100 to-green-200 dark:from-green-900 dark:to-green-800 text-green-800 dark:text-green-200 animate-pulse"
+                            className="mt-2 text-xs bg-gradient-to-r from-green-100 to-green-200 dark:from-green-900 dark:to-green-800 text-green-800 dark:text-green-200"
                           >
                             Earned
                           </Badge>

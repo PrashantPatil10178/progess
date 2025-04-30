@@ -6,8 +6,11 @@ import {
   USERS_COLLECTION_ID,
   ID,
   Query,
+  functions,
 } from "./appwrite";
 import { OAuthProvider } from "appwrite";
+import { redirect } from "@tanstack/react-router";
+import { getUserRank } from "@/services/leaderboard.service";
 
 export interface User {
   $id: string;
@@ -40,6 +43,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUserData: (data: Partial<User>) => Promise<User | null>;
   checkUserStatus: () => Promise<void>;
+  getRank: () => Promise<number | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -105,33 +109,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let userData = await getUserData(userId);
     if (userData) return userData;
 
-    const document = await databases.createDocument(
-      DATABASE_ID,
-      USERS_COLLECTION_ID,
-      userId,
-      {
-        name,
-        email,
-        phoneNo: phoneNo || "",
-        Class: Class || "",
-        District: District || "",
-        points: 0,
-        streak: 0,
-        badges: [],
-      }
-    );
+    try {
+      const document = await databases.createDocument(
+        DATABASE_ID,
+        USERS_COLLECTION_ID,
+        userId,
+        {
+          name,
+          email,
+          phoneNo: phoneNo || "",
+          Class: Class || "",
+          District: District || "",
+          points: 0,
+          streak: 0,
+          badges: [],
+        }
+      );
 
-    return {
-      name: document.name,
-      email: document.email,
-      phoneNo: document.phoneNo || "",
-      Class: document.Class || "",
-      District: document.District || "",
-      points: document.points || 0,
-      streak: document.streak || 0,
-      badges: document.badges || [],
-      ...document,
-    } as User;
+      return {
+        name: document.name,
+        email: document.email,
+        phoneNo: document.phoneNo || "",
+        Class: document.Class || "",
+        District: document.District || "",
+        points: document.points || 0,
+        streak: document.streak || 0,
+        badges: document.badges || [],
+        ...document,
+      } as User;
+    } catch (error: any) {
+      if (error.code === 409) {
+        // 409 Conflict = Already Exists
+        console.warn("Document already exists. Fetching existing document.");
+        const existingUserData = await getUserData(userId);
+        if (existingUserData) return existingUserData;
+      }
+      console.error("Failed to ensure user document", error);
+      throw error;
+    }
   };
 
   const checkUserStatus = async () => {
@@ -190,6 +205,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       setUser(userData);
       setIsAuthenticated(true);
+      functions.createExecution(
+        "6811050a0016f9478345",
+        JSON.stringify({ userId: user?.$id })
+      );
 
       return userData;
     } catch (error) {
@@ -227,14 +246,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const loginWithGoogle = async (): Promise<void> => {
     try {
       const currentUrl = window.location.origin;
+      console.log("Current URL:", currentUrl);
+
       account.createOAuth2Session(
         OAuthProvider.Google,
         `${currentUrl}/studytracker/dashboard`,
-        `${currentUrl}/login-failed`
+        `${currentUrl}/studytracker/oauth-failure`
       );
     } catch (error) {
       console.error("Google login error", error);
-      throw error;
+      throw redirect({
+        to: "/oauth-failure",
+        search: {
+          error: "Google login failed",
+          message: error,
+          random: "I am here",
+        },
+      });
     }
   };
 
@@ -254,7 +282,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return userData;
     } catch (error) {
       console.error("OAuth callback error", error);
-      throw error;
+
+      throw redirect({
+        to: "/oauth-failure",
+        search: { error: "OAuth login failed" },
+      });
     } finally {
       setLoading(false);
     }
@@ -270,10 +302,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const getRank = async (): Promise<number | null> => {
+    try {
+      if (!user) return null;
+      const rank = await getUserRank(user.$id);
+      return rank;
+    } catch (error) {
+      console.error("Error fetching rank:", error);
+      return null;
+    }
+  };
+
   const updateUserData = async (data: Partial<User>): Promise<User | null> => {
     try {
       if (!user) return null;
-      await account.updatePhone("+91" + data.phoneNo || "", user.email || "");
+
+      if (!user.phoneNo && data.phoneNo) {
+        await account.updatePhone(
+          data.phoneNo ? "+91" + data.phoneNo : user.phoneNo || "",
+          ID.unique()
+        );
+      }
       const document = await databases.updateDocument(
         DATABASE_ID,
         USERS_COLLECTION_ID,
@@ -305,6 +354,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     updateUserData,
     checkUserStatus,
+    getRank,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

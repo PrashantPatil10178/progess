@@ -1,0 +1,75 @@
+- name: Build Vite project and deploy dist files to studytracker directory
+  hosts: localhost
+  tasks:
+    - name: Run pnpm build locally
+      command: pnpm run build
+      args:
+        chdir: ./
+
+- name: Deploy built dist files to studytracker directory
+  hosts: webservers
+  become: no
+  tasks:
+    - name: Ensure Backups directory exists
+      file:
+        path: /home/u953091613/public_html/public_html/Backups
+        state: directory
+        mode: "0755"
+
+    - name: Ensure StudyTrackerBackups directory exists inside Backups
+      file:
+        path: /home/u953091613/public_html/public_html/Backups/StudyTrackerBackups
+        state: directory
+        mode: "0755"
+
+    - name: Backup existing studytracker files
+      command: cp -r /home/u953091613/public_html/public_html/studytracker /home/u953091613/public_html/public_html/Backups/StudyTrackerBackups/studytracker_backup_{{ ansible_date_time.iso8601 }}
+
+    - name: Clean up old files in the studytracker directory
+      file:
+        path: /home/u953091613/public_html/public_html/studytracker
+        state: absent
+
+    - name: Recreate empty studytracker directory
+      file:
+        path: /home/u953091613/public_html/public_html/studytracker
+        state: directory
+        mode: "0755"
+
+    - name: Upload Vite dist files
+      synchronize:
+        src: ./dist/
+        dest: /home/u953091613/public_html/public_html/studytracker/
+        recursive: yes
+        delete: yes
+
+    - name: Create .htaccess file for React Router
+      copy:
+        dest: /home/u953091613/public_html/public_html/studytracker/.htaccess
+        content: |
+          <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteBase /studytracker/
+            RewriteRule ^index\.html$ - [L]
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule . /studytracker/index.html [L]
+          </IfModule>
+        mode: "0644"
+
+    - name: Set permissions for all files inside studytracker
+      file:
+        path: /home/u953091613/public_html/public_html/studytracker
+        state: directory
+        recurse: yes
+        mode: "0755"
+
+    - name: Generate deployment report
+      copy:
+        content: |
+          Deployment Summary:
+          -------------------
+          Deployment Status: SUCCESS
+          Date and Time: {{ ansible_date_time.iso8601 }}
+          Deployed to: /home/u953091613/public_html/public_html/studytracker
+        dest: /home/u953091613/public_html/public_html/Backups/StudyTrackerBackups/deployment_report.txt

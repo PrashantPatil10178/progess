@@ -17,6 +17,7 @@ import { Route as authenticatedProgressImport } from './routes/__authenticated/p
 import { Route as authenticatedProfileImport } from './routes/__authenticated/profile'
 import { Route as authenticatedLeaderboardImport } from './routes/__authenticated/leaderboard'
 import { Route as authenticatedDashboardImport } from './routes/__authenticated/dashboard'
+import { Route as errorOauthFailureImport } from './routes/(error)/oauth-failure'
 import { Route as authRegisterImport } from './routes/(auth)/register'
 import { Route as authLoginImport } from './routes/(auth)/login'
 
@@ -55,6 +56,12 @@ const authenticatedDashboardRoute = authenticatedDashboardImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => authenticatedRouteRoute,
+} as any)
+
+const errorOauthFailureRoute = errorOauthFailureImport.update({
+  id: '/(error)/oauth-failure',
+  path: '/oauth-failure',
+  getParentRoute: () => rootRoute,
 } as any)
 
 const authRegisterRoute = authRegisterImport.update({
@@ -99,6 +106,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof authRegisterImport
+      parentRoute: typeof rootRoute
+    }
+    '/(error)/oauth-failure': {
+      id: '/(error)/oauth-failure'
+      path: '/oauth-failure'
+      fullPath: '/oauth-failure'
+      preLoaderRoute: typeof errorOauthFailureImport
       parentRoute: typeof rootRoute
     }
     '/__authenticated/dashboard': {
@@ -156,6 +170,7 @@ export interface FileRoutesByFullPath {
   '': typeof authenticatedRouteRouteWithChildren
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/oauth-failure': typeof errorOauthFailureRoute
   '/dashboard': typeof authenticatedDashboardRoute
   '/leaderboard': typeof authenticatedLeaderboardRoute
   '/profile': typeof authenticatedProfileRoute
@@ -167,6 +182,7 @@ export interface FileRoutesByTo {
   '': typeof authenticatedRouteRouteWithChildren
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/oauth-failure': typeof errorOauthFailureRoute
   '/dashboard': typeof authenticatedDashboardRoute
   '/leaderboard': typeof authenticatedLeaderboardRoute
   '/profile': typeof authenticatedProfileRoute
@@ -179,6 +195,7 @@ export interface FileRoutesById {
   '/__authenticated': typeof authenticatedRouteRouteWithChildren
   '/(auth)/login': typeof authLoginRoute
   '/(auth)/register': typeof authRegisterRoute
+  '/(error)/oauth-failure': typeof errorOauthFailureRoute
   '/__authenticated/dashboard': typeof authenticatedDashboardRoute
   '/__authenticated/leaderboard': typeof authenticatedLeaderboardRoute
   '/__authenticated/profile': typeof authenticatedProfileRoute
@@ -192,6 +209,7 @@ export interface FileRouteTypes {
     | ''
     | '/login'
     | '/register'
+    | '/oauth-failure'
     | '/dashboard'
     | '/leaderboard'
     | '/profile'
@@ -202,6 +220,7 @@ export interface FileRouteTypes {
     | ''
     | '/login'
     | '/register'
+    | '/oauth-failure'
     | '/dashboard'
     | '/leaderboard'
     | '/profile'
@@ -212,6 +231,7 @@ export interface FileRouteTypes {
     | '/__authenticated'
     | '/(auth)/login'
     | '/(auth)/register'
+    | '/(error)/oauth-failure'
     | '/__authenticated/dashboard'
     | '/__authenticated/leaderboard'
     | '/__authenticated/profile'
@@ -224,6 +244,7 @@ export interface RootRouteChildren {
   authenticatedRouteRoute: typeof authenticatedRouteRouteWithChildren
   authLoginRoute: typeof authLoginRoute
   authRegisterRoute: typeof authRegisterRoute
+  errorOauthFailureRoute: typeof errorOauthFailureRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -231,6 +252,7 @@ const rootRouteChildren: RootRouteChildren = {
   authenticatedRouteRoute: authenticatedRouteRouteWithChildren,
   authLoginRoute: authLoginRoute,
   authRegisterRoute: authRegisterRoute,
+  errorOauthFailureRoute: errorOauthFailureRoute,
 }
 
 export const routeTree = rootRoute
@@ -246,7 +268,8 @@ export const routeTree = rootRoute
         "/",
         "/__authenticated",
         "/(auth)/login",
-        "/(auth)/register"
+        "/(auth)/register",
+        "/(error)/oauth-failure"
       ]
     },
     "/": {
@@ -266,6 +289,9 @@ export const routeTree = rootRoute
     },
     "/(auth)/register": {
       "filePath": "(auth)/register.tsx"
+    },
+    "/(error)/oauth-failure": {
+      "filePath": "(error)/oauth-failure.tsx"
     },
     "/__authenticated/dashboard": {
       "filePath": "__authenticated/dashboard.tsx",

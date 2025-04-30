@@ -1,6 +1,5 @@
-import { Client, Account, Databases, ID, Query } from "appwrite";
+import { Client, Account, Databases, ID, Query, Functions } from "appwrite";
 
-// Initialize Appwrite client
 const client = new Client();
 
 client
@@ -9,6 +8,7 @@ client
 
 export const account = new Account(client);
 export const databases = new Databases(client);
+export const functions = new Functions(client);
 
 export const DATABASE_ID = "67f4fb3b003aa9ecbf0e";
 export const USERS_COLLECTION_ID = "67f4fb8e003142cb5a85";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Button } from "./ui/button";
 import { ModeToggle } from "./mode-toggle";
 import { useAuth } from "@/lib/auth-context";
@@ -19,6 +19,7 @@ export default function Header() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const pathname = location.pathname;
 
   const routes = [
@@ -52,6 +53,15 @@ export default function Header() {
   const filteredRoutes = routes.filter(
     (route) => !route.protected || (route.protected && user)
   );
+  const HandleLogout = async () => {
+    try {
+      await logout();
+      setOpen(false);
+      navigate({ to: "/login" });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -164,7 +174,7 @@ export default function Header() {
                     Profile
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={logout}>
+                <DropdownMenuItem onClick={HandleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out
                 </DropdownMenuItem>
