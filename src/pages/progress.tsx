@@ -37,6 +37,7 @@ import {
   Clock,
   ChevronDown,
   Info,
+  Send,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,42 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { updateLeaderboardPoints } from "@/services/leaderboard.service";
+
+// Add custom animation keyframes
+const customAnimations = `
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 2s ease-in-out infinite;
+}
+`;
+
+// Add the style element to the document
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.innerHTML = customAnimations;
+  document.head.appendChild(style);
+}
 
 interface Todo {
   $id: string;
@@ -224,6 +261,177 @@ export default function ProgressPage() {
     initializeData();
   }, [user]);
 
+  // Modify the handleToggleTodo function to prevent direct completion
+  const handleToggleTodo = async (id: string) => {
+    const todoToUpdate = todos.find((todo) => todo.$id === id);
+    if (!todoToUpdate) return;
+
+    if (todoToUpdate.isProcessing) return;
+
+    // Only allow unchecking a todo, not checking it directly
+    if (!todoToUpdate.completed) {
+      toast({
+        title: "Cannot mark todo as complete directly",
+        description:
+          "You must complete a Pomodoro session for this task to mark it as done.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const originalTodos = [...todos];
+
+    setTodos(
+      todos.map((todo) =>
+        todo.$id === id
+          ? {
+              ...todo,
+              completed: false,
+              pointsAwarded: false,
+              isProcessing: true,
+            }
+          : todo
+      )
+    );
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await updateTodo(id, {
+        completed: false,
+        pointsAwarded: false,
+      });
+
+      setTodos((currentTodos) =>
+        currentTodos.map((todo) =>
+          todo.$id === id
+            ? {
+                ...todo,
+                isProcessing: false,
+              }
+            : todo
+        )
+      );
+
+      toast({
+        title: "Todo reset",
+        description: "You can now complete this todo with a Pomodoro session.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Error updating todo:", error);
+      toast({
+        title: "Error Updating Todo",
+        description: "Could not update the todo status. Please try again.",
+        variant: "destructive",
+      });
+      setTodos(originalTodos);
+    }
+  };
+
+  // Modify the startTimer function to link it with the selected todo
+  const startTimer = () => {
+    if (currentTodoForPomodoro === "none") {
+      toast({
+        title: "No task selected",
+        description:
+          "Please select a task to focus on before starting the timer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBreak(false);
+    setTimeLeft(focusMinutes * 60);
+    setTimerProgress(100);
+    setIsTimerActive(true);
+    setIsTimerPaused(false);
+    setShowFullScreen(true);
+    setCurrentQuote(
+      motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]
+    );
+  };
+
+  // Add a new function to complete a todo after Pomodoro session
+  const completeTodoAfterPomodoro = async (todoText: string) => {
+    if (!user || todoText === "none") return;
+
+    const todoToComplete = todos.find(
+      (todo) => todo.text === todoText && !todo.completed
+    );
+    if (!todoToComplete) return;
+
+    const originalTodos = [...todos];
+
+    setTodos(
+      todos.map((todo) =>
+        todo.$id === todoToComplete.$id
+          ? {
+              ...todo,
+              completed: true,
+              pointsAwarded: false,
+              isProcessing: true,
+            }
+          : todo
+      )
+    );
+
+    try {
+      await updateTodo(todoToComplete.$id, {
+        completed: true,
+        pointsAwarded: false,
+      });
+
+      setTodos((currentTodos) =>
+        currentTodos.map((todo) =>
+          todo.$id === todoToComplete.$id
+            ? {
+                ...todo,
+                isProcessing: false,
+              }
+            : todo
+        )
+      );
+
+      toast({
+        title: "Todo completed!",
+        description: `"${todoToComplete.text}" has been marked as complete after your Pomodoro session.`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Error completing todo:", error);
+      toast({
+        title: "Error Completing Todo",
+        description: "Could not mark the todo as complete. Please try again.",
+        variant: "destructive",
+      });
+      setTodos(originalTodos);
+    }
+  };
+
+  const handleDeleteTodo = async (id: string) => {
+    const originalTodos = [...todos];
+    setTodos((prevTodos) => prevTodos.filter((todo) => todo.$id !== id));
+
+    try {
+      await deleteTodo(id);
+      toast({
+        title: "Todo deleted",
+        description: "The todo has been successfully deleted.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Error deleting todo:", error);
+      toast({
+        title: "Error Deleting Todo",
+        description: "Could not delete the todo. Please try again.",
+        variant: "destructive",
+      });
+      setTodos(originalTodos);
+    }
+  };
+
+  // Modify the useEffect for the timer to complete the todo when a focus session ends
   useEffect(() => {
     if (isTimerActive && !isTimerPaused) {
       const totalTime = isBreak ? breakMinutes * 60 : focusMinutes * 60;
@@ -237,21 +445,30 @@ export default function ProgressPage() {
                 .catch((e) =>
                   console.error("Error playing focus notification:", e)
                 );
+
+              // Complete the todo when the focus session ends
+              completeTodoAfterPomodoro(currentTodoForPomodoro);
+
+              toast({
+                title: "Focus Session Completed!",
+                description:
+                  "Great job! Your task has been marked as complete. Take a short break now.",
+                variant: "default",
+              });
             } else if (isBreak && breakAudioRef.current) {
               breakAudioRef.current
                 .play()
                 .catch((e) =>
                   console.error("Error playing break notification:", e)
                 );
-            }
 
-            toast({
-              title: isBreak ? "Break Time Over!" : "Focus Session Completed!",
-              description: isBreak
-                ? "Time to get back to work. Starting a new focus session."
-                : "Great job! Take a short break now.",
-              variant: "default",
-            });
+              toast({
+                title: "Break Time Over!",
+                description:
+                  "Time to get back to work. Select a new task for your next focus session.",
+                variant: "default",
+              });
+            }
 
             if (!isBreak) {
               setPomodoroCount((prevCount) => prevCount + 1);
@@ -266,13 +483,12 @@ export default function ProgressPage() {
               return breakMinutes * 60;
             } else {
               setIsBreak(false);
-              setCurrentQuote(
-                motivationalQuotes[
-                  Math.floor(Math.random() * motivationalQuotes.length)
-                ]
-              );
+              // Reset the current todo after a complete cycle
+              setCurrentTodoForPomodoro("none");
               setTimeLeft(focusMinutes * 60);
               setTimerProgress(100);
+              setIsTimerActive(false);
+              setShowFullScreen(false);
               return focusMinutes * 60;
             }
           }
@@ -296,7 +512,14 @@ export default function ProgressPage() {
         clearInterval(timerRef.current);
       }
     };
-  }, [isTimerActive, isTimerPaused, isBreak, focusMinutes, breakMinutes]);
+  }, [
+    isTimerActive,
+    isTimerPaused,
+    isBreak,
+    focusMinutes,
+    breakMinutes,
+    currentTodoForPomodoro,
+  ]);
 
   const handleAttendanceToggle = (checked: boolean | "indeterminate") => {
     const isChecked = typeof checked === "boolean" ? checked : false;
@@ -387,85 +610,6 @@ export default function ProgressPage() {
     }
   };
 
-  const handleToggleTodo = async (id: string) => {
-    const todoToUpdate = todos.find((todo) => todo.$id === id);
-    if (!todoToUpdate) return;
-
-    if (todoToUpdate.isProcessing) return;
-
-    const originalTodos = [...todos];
-    const newCompletedStatus = !todoToUpdate.completed;
-
-    const updatedPointsAwarded = newCompletedStatus
-      ? false
-      : todoToUpdate.pointsAwarded;
-
-    setTodos(
-      todos.map((todo) =>
-        todo.$id === id
-          ? {
-              ...todo,
-              completed: newCompletedStatus,
-              pointsAwarded: updatedPointsAwarded,
-              isProcessing: true,
-            }
-          : todo
-      )
-    );
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      await updateTodo(id, {
-        completed: newCompletedStatus,
-        pointsAwarded: updatedPointsAwarded,
-      });
-
-      setTodos((currentTodos) =>
-        currentTodos.map((todo) =>
-          todo.$id === id
-            ? {
-                ...todo,
-                isProcessing: false,
-              }
-            : todo
-        )
-      );
-    } catch (error) {
-      console.error("Error updating todo:", error);
-      toast({
-        title: "Error Updating Todo",
-        description: "Could not update the todo status. Please try again.",
-        variant: "destructive",
-      });
-      setTodos(originalTodos);
-    }
-  };
-
-  const handleDeleteTodo = async (id: string) => {
-    const originalTodos = [...todos];
-    const todoToDelete = todos.find((t) => t.$id === id);
-
-    setTodos(todos.filter((todo) => todo.$id !== id));
-
-    try {
-      await deleteTodo(id);
-      toast({
-        title: "Todo Deleted",
-        description: `"${todoToDelete?.text}" was successfully deleted.`,
-        variant: "default",
-      });
-    } catch (error) {
-      console.error("Error deleting todo:", error);
-      toast({
-        title: "Error Deleting Todo",
-        description: "Could not delete the todo. Please try again.",
-        variant: "destructive",
-      });
-      setTodos(originalTodos);
-    }
-  };
-
   const calculatePoints = () => {
     let points = 0;
 
@@ -520,18 +664,6 @@ export default function ProgressPage() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const startTimer = () => {
-    setIsBreak(false);
-    setTimeLeft(focusMinutes * 60);
-    setTimerProgress(100);
-    setIsTimerActive(true);
-    setIsTimerPaused(false);
-    setShowFullScreen(true);
-    setCurrentQuote(
-      motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]
-    );
   };
 
   const pauseTimer = () => {
@@ -854,7 +986,7 @@ export default function ProgressPage() {
               ) : (
                 <>
                   <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" /> Stay
-                  Focused
+                  Focused to Complete Your Task
                 </>
               )}
             </div>
@@ -864,10 +996,23 @@ export default function ProgressPage() {
                 <p className="text-white/70 text-xs uppercase tracking-wider mb-1">
                   Current Task:
                 </p>
-                <p className="text-white text-lg font-medium truncate">
-                  {todos.find((t) => t.text === currentTodoForPomodoro)?.text ||
-                    currentTodoForPomodoro}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white text-lg font-medium truncate">
+                    {todos.find((t) => t.text === currentTodoForPomodoro)
+                      ?.text || currentTodoForPomodoro}
+                  </p>
+                  {!isBreak && (
+                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">
+                      In Progress
+                    </Badge>
+                  )}
+                </div>
+                {!isBreak && (
+                  <p className="text-white/60 text-xs mt-2">
+                    This task will be marked as complete when the focus session
+                    ends
+                  </p>
+                )}
               </div>
             )}
 
@@ -1160,55 +1305,92 @@ export default function ProgressPage() {
                       No tasks yet. Add some above!
                     </div>
                   ) : (
-                    todos.map((todo, index) => (
-                      <div
-                        key={todo.$id}
-                        className={`flex items-center justify-between p-3 rounded-lg border animate-fade-in transition-colors ${
-                          todo.completed
-                            ? "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800 opacity-70"
-                            : "bg-background border-border"
-                        }`}
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <Checkbox
-                            id={`todo-${todo.$id}`}
-                            checked={todo.completed}
-                            onCheckedChange={() => handleToggleTodo(todo.$id)}
-                            aria-labelledby={`todo-label-${todo.$id}`}
-                            className={
-                              todo.completed
-                                ? "border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:text-white"
-                                : ""
-                            }
-                          />
-                          <Label
-                            id={`todo-label-${todo.$id}`}
-                            htmlFor={`todo-${todo.$id}`}
-                            className={`flex-1 truncate cursor-pointer ${todo.completed ? "line-through text-muted-foreground" : ""}`}
-                          >
-                            {todo.text}
-                          </Label>
-                          {todo.completed && todo.pointsAwarded && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs px-1.5 py-0.5 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400"
-                            >
-                              +15 Awarded
-                            </Badge>
-                          )}
+                    <>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 mb-2">
+                        <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                          <Info className="h-4 w-4 flex-shrink-0" />
+                          <p className="text-sm">
+                            Tasks can only be completed by finishing a Pomodoro
+                            session. Select a task and start the timer below.
+                          </p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteTodo(todo.$id)}
-                          className="text-muted-foreground hover:text-destructive h-8 w-8 ml-2"
-                          aria-label={`Delete todo: ${todo.text}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
                       </div>
-                    ))
+                      {todos.map((todo, index) => (
+                        <div
+                          key={todo.$id}
+                          className={`flex items-center justify-between p-3 rounded-lg border animate-fade-in transition-colors ${
+                            todo.completed
+                              ? "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800 opacity-70"
+                              : "bg-background border-border"
+                          }`}
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Checkbox
+                              id={`todo-${todo.$id}`}
+                              checked={todo.completed}
+                              onCheckedChange={() => handleToggleTodo(todo.$id)}
+                              aria-labelledby={`todo-label-${todo.$id}`}
+                              className={
+                                todo.completed
+                                  ? "border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:text-white"
+                                  : "opacity-50 cursor-not-allowed"
+                              }
+                              disabled={!todo.completed}
+                            />
+                            <Label
+                              id={`todo-label-${todo.$id}`}
+                              htmlFor={`todo-${todo.$id}`}
+                              className={`flex-1 truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              {todo.text}
+                              {!todo.completed && (
+                                <span className="block text-xs text-muted-foreground mt-0.5">
+                                  Use Pomodoro to complete
+                                </span>
+                              )}
+                            </Label>
+                            {todo.completed && todo.pointsAwarded && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs px-1.5 py-0.5 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400"
+                              >
+                                +15 Awarded
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {!todo.completed && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setCurrentTodoForPomodoro(todo.text);
+                                  toast({
+                                    title: "Task selected",
+                                    description: `"${todo.text}" selected for your next Pomodoro session.`,
+                                    variant: "default",
+                                  });
+                                }}
+                                className="h-8 text-xs border-green-200 text-green-700 hover:text-green-800 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/30"
+                                aria-label={`Focus on todo: ${todo.text}`}
+                              >
+                                <Timer className="h-3 w-3 mr-1" /> Focus
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteTodo(todo.$id)}
+                              className="text-muted-foreground hover:text-destructive h-8 w-8"
+                              aria-label={`Delete todo: ${todo.text}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
 
@@ -1374,27 +1556,42 @@ export default function ProgressPage() {
                   )}
 
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <Select
-                      value={currentTodoForPomodoro}
-                      onValueChange={setCurrentTodoForPomodoro}
-                    >
-                      <SelectTrigger className="w-full sm:flex-1">
-                        <SelectValue placeholder="Focus on a task (optional)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No specific task</SelectItem>
-                        {todos
-                          .filter((t) => !t.completed)
-                          .map((todo) => (
-                            <SelectItem key={todo.$id} value={todo.text}>
-                              {todo.text}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="w-full sm:flex-1">
+                      <Select
+                        value={currentTodoForPomodoro}
+                        onValueChange={setCurrentTodoForPomodoro}
+                      >
+                        <SelectTrigger
+                          className={`w-full ${currentTodoForPomodoro === "none" ? "border-amber-300 dark:border-amber-700" : "border-green-300 dark:border-green-700"}`}
+                        >
+                          <SelectValue placeholder="Select a task to focus on" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No specific task</SelectItem>
+                          {todos
+                            .filter((t) => !t.completed)
+                            .map((todo) => (
+                              <SelectItem key={todo.$id} value={todo.text}>
+                                {todo.text}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {currentTodoForPomodoro === "none" && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 ml-1">
+                          Select a task to complete it with the Pomodoro timer
+                        </p>
+                      )}
+                    </div>
                     <Button
                       onClick={startTimer}
-                      className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white w-full sm:w-auto"
+                      className={`bg-gradient-to-r ${
+                        currentTodoForPomodoro === "none"
+                          ? "from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700"
+                          : "from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                      } text-white w-full sm:w-auto transition-all duration-300 ${
+                        currentTodoForPomodoro !== "none" ? "animate-pulse" : ""
+                      }`}
                       disabled={isTimerActive}
                     >
                       <Timer className="h-4 w-4 mr-2" /> Start Focus Session
@@ -1432,22 +1629,30 @@ export default function ProgressPage() {
         </Tabs>
 
         <div className="fixed bottom-6 right-6 z-40">
-          <Button
-            onClick={() => {
-              const dialog = document.getElementById(
-                "summary-modal"
-              ) as HTMLDialogElement | null;
-              if (dialog) {
-                dialog.showModal();
-              } else {
-                console.error("Summary modal dialog not found");
-              }
-            }}
-            className="rounded-full w-14 h-14 shadow-lg bg-gradient-to-r from-blue-600 to-green-500 hover:from-blue-700 hover:to-green-600 p-0 flex items-center justify-center text-white"
-            aria-label="Show Progress Summary"
-          >
-            <ChevronUp className="h-6 w-6" />
-          </Button>
+          <div className="relative group">
+            {/* Soft glowing pulse background */}
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-70 blur-md animate-pulse group-hover:opacity-90 transition-opacity"></div>
+
+            {/* Smooth rotating border ring */}
+            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 opacity-60 animate-spin-slow"></div>
+
+            <Button
+              onClick={() => {
+                const dialog = document.getElementById(
+                  "summary-modal"
+                ) as HTMLDialogElement | null;
+                if (dialog) {
+                  dialog.showModal();
+                } else {
+                  console.error("Summary modal dialog not found");
+                }
+              }}
+              className="relative rounded-full w-16 h-16 shadow-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 p-0 flex items-center justify-center text-white border-2 border-white dark:border-gray-800 transition-transform duration-300 hover:scale-110 z-10"
+              aria-label="Show Progress Summary"
+            >
+              <Send className="w-6 h-6 animate-bounce-subtle" />
+            </Button>
+          </div>
         </div>
 
         <dialog

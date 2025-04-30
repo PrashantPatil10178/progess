@@ -18,8 +18,10 @@ import { Route as authenticatedProfileImport } from './routes/__authenticated/pr
 import { Route as authenticatedLeaderboardImport } from './routes/__authenticated/leaderboard'
 import { Route as authenticatedDashboardImport } from './routes/__authenticated/dashboard'
 import { Route as errorOauthFailureImport } from './routes/(error)/oauth-failure'
+import { Route as authResetPasswordImport } from './routes/(auth)/reset-password'
 import { Route as authRegisterImport } from './routes/(auth)/register'
 import { Route as authLoginImport } from './routes/(auth)/login'
+import { Route as authForgotPasswordImport } from './routes/(auth)/forgot-password'
 
 // Create/Update Routes
 
@@ -64,6 +66,12 @@ const errorOauthFailureRoute = errorOauthFailureImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const authResetPasswordRoute = authResetPasswordImport.update({
+  id: '/(auth)/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRoute,
+} as any)
+
 const authRegisterRoute = authRegisterImport.update({
   id: '/(auth)/register',
   path: '/register',
@@ -73,6 +81,12 @@ const authRegisterRoute = authRegisterImport.update({
 const authLoginRoute = authLoginImport.update({
   id: '/(auth)/login',
   path: '/login',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const authForgotPasswordRoute = authForgotPasswordImport.update({
+  id: '/(auth)/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -94,6 +108,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authenticatedRouteImport
       parentRoute: typeof rootRoute
     }
+    '/(auth)/forgot-password': {
+      id: '/(auth)/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof authForgotPasswordImport
+      parentRoute: typeof rootRoute
+    }
     '/(auth)/login': {
       id: '/(auth)/login'
       path: '/login'
@@ -106,6 +127,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof authRegisterImport
+      parentRoute: typeof rootRoute
+    }
+    '/(auth)/reset-password': {
+      id: '/(auth)/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof authResetPasswordImport
       parentRoute: typeof rootRoute
     }
     '/(error)/oauth-failure': {
@@ -168,8 +196,10 @@ const authenticatedRouteRouteWithChildren =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '': typeof authenticatedRouteRouteWithChildren
+  '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/reset-password': typeof authResetPasswordRoute
   '/oauth-failure': typeof errorOauthFailureRoute
   '/dashboard': typeof authenticatedDashboardRoute
   '/leaderboard': typeof authenticatedLeaderboardRoute
@@ -180,8 +210,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof authenticatedRouteRouteWithChildren
+  '/forgot-password': typeof authForgotPasswordRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
+  '/reset-password': typeof authResetPasswordRoute
   '/oauth-failure': typeof errorOauthFailureRoute
   '/dashboard': typeof authenticatedDashboardRoute
   '/leaderboard': typeof authenticatedLeaderboardRoute
@@ -193,8 +225,10 @@ export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexRoute
   '/__authenticated': typeof authenticatedRouteRouteWithChildren
+  '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/login': typeof authLoginRoute
   '/(auth)/register': typeof authRegisterRoute
+  '/(auth)/reset-password': typeof authResetPasswordRoute
   '/(error)/oauth-failure': typeof errorOauthFailureRoute
   '/__authenticated/dashboard': typeof authenticatedDashboardRoute
   '/__authenticated/leaderboard': typeof authenticatedLeaderboardRoute
@@ -207,8 +241,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | ''
+    | '/forgot-password'
     | '/login'
     | '/register'
+    | '/reset-password'
     | '/oauth-failure'
     | '/dashboard'
     | '/leaderboard'
@@ -218,8 +254,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | ''
+    | '/forgot-password'
     | '/login'
     | '/register'
+    | '/reset-password'
     | '/oauth-failure'
     | '/dashboard'
     | '/leaderboard'
@@ -229,8 +267,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/__authenticated'
+    | '/(auth)/forgot-password'
     | '/(auth)/login'
     | '/(auth)/register'
+    | '/(auth)/reset-password'
     | '/(error)/oauth-failure'
     | '/__authenticated/dashboard'
     | '/__authenticated/leaderboard'
@@ -242,16 +282,20 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   authenticatedRouteRoute: typeof authenticatedRouteRouteWithChildren
+  authForgotPasswordRoute: typeof authForgotPasswordRoute
   authLoginRoute: typeof authLoginRoute
   authRegisterRoute: typeof authRegisterRoute
+  authResetPasswordRoute: typeof authResetPasswordRoute
   errorOauthFailureRoute: typeof errorOauthFailureRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   authenticatedRouteRoute: authenticatedRouteRouteWithChildren,
+  authForgotPasswordRoute: authForgotPasswordRoute,
   authLoginRoute: authLoginRoute,
   authRegisterRoute: authRegisterRoute,
+  authResetPasswordRoute: authResetPasswordRoute,
   errorOauthFailureRoute: errorOauthFailureRoute,
 }
 
@@ -267,8 +311,10 @@ export const routeTree = rootRoute
       "children": [
         "/",
         "/__authenticated",
+        "/(auth)/forgot-password",
         "/(auth)/login",
         "/(auth)/register",
+        "/(auth)/reset-password",
         "/(error)/oauth-failure"
       ]
     },
@@ -284,11 +330,17 @@ export const routeTree = rootRoute
         "/__authenticated/progress"
       ]
     },
+    "/(auth)/forgot-password": {
+      "filePath": "(auth)/forgot-password.tsx"
+    },
     "/(auth)/login": {
       "filePath": "(auth)/login.tsx"
     },
     "/(auth)/register": {
       "filePath": "(auth)/register.tsx"
+    },
+    "/(auth)/reset-password": {
+      "filePath": "(auth)/reset-password.tsx"
     },
     "/(error)/oauth-failure": {
       "filePath": "(error)/oauth-failure.tsx"

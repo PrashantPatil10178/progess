@@ -44,6 +44,12 @@ interface AuthContextType {
   updateUserData: (data: Partial<User>) => Promise<User | null>;
   checkUserStatus: () => Promise<void>;
   getRank: () => Promise<number | null>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (
+    userId: string,
+    secret: string,
+    newPassword: string
+  ) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -139,7 +145,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } as User;
     } catch (error: any) {
       if (error.code === 409) {
-        // 409 Conflict = Already Exists
         console.warn("Document already exists. Fetching existing document.");
         const existingUserData = await getUserData(userId);
         if (existingUserData) return existingUserData;
@@ -205,9 +210,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       setUser(userData);
       setIsAuthenticated(true);
+      console.log("User registered and logged in:", userData);
+      console.log("User ID:", userData.$id);
+      await new Promise((resolve) => setTimeout(resolve, 10000));
       functions.createExecution(
         "6811050a0016f9478345",
-        JSON.stringify({ userId: user?.$id })
+        JSON.stringify({ userId: userData.$id })
       );
 
       return userData;
@@ -302,6 +310,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const forgotPassword = async (email: string): Promise<void> => {
+    try {
+      setLoading(true);
+      await account.createRecovery(
+        email,
+        `${window.location.origin}/studytracker/reset-password`
+      );
+    } catch (error) {
+      console.error("Password recovery error", error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (
+    userId: string,
+    secret: string,
+    newPassword: string
+  ): Promise<void> => {
+    try {
+      setLoading(true);
+      await account.updateRecovery(userId, secret, newPassword);
+    } catch (error) {
+      console.error("Password reset error", error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getRank = async (): Promise<number | null> => {
     try {
       if (!user) return null;
@@ -355,6 +394,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateUserData,
     checkUserStatus,
     getRank,
+    forgotPassword,
+    resetPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
